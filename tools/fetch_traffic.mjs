@@ -42,23 +42,33 @@ const pack = (a, mil) => {
     (a.flight || "").trim(), a.t || "", mil || ((a.dbFlags || 0) & 1) ? 1 : 0, a.hex || ""];
 };
 
+// Two feeds, each asked at most about once every 1.5 s. Each area goes to adsb.lol first;
+// if that is refused (usually rate limiting) it is retried on airplanes.live.
+const FEEDS = {
+  "adsb.lol": { mil: "https://api.adsb.lol/v2/mil", point: (la, lo) => `https://api.adsb.lol/v2/point/${la}/${lo}/250`, next: 0 },
+  "airplanes.live": { mil: "https://api.airplanes.live/v2/mil", point: (la, lo) => `https://api.airplanes.live/v2/point/${la}/${lo}/250`, next: 0 }
+};
+async function ask(name, url) {
+  const f = FEEDS[name]; const wait = f.next - Date.now();
+  if (wait > 0) await sleep(wait);
+  f.next = Date.now() + 1500;
+  return getJSON(url);
+}
 async function aircraft() {
-  const sources = [
-    ["adsb.lol", "https://api.adsb.lol/v2/mil", (la, lo) => `https://api.adsb.lol/v2/point/${la}/${lo}/250`],
-    ["airplanes.live", "https://api.airplanes.live/v2/mil", (la, lo) => `https://api.airplanes.live/v2/point/${la}/${lo}/250`]
-  ];
-  for (const [name, milUrl, pointUrl] of sources) {
-    const map = new Map(); let ok = 0, fail = 0;
-    try { const m = await getJSON(milUrl); ok++; for (const a of m.ac || []) { const p = pack(a, true); if (p) map.set(p[8], p); } } catch (e) { fail++; console.log(name, "mil", e.message); }
-    for (const [la, lo] of points()) {
-      await sleep(1100);
-      try { const d = await getJSON(pointUrl(la.toFixed(2), lo.toFixed(2))); ok++; for (const a of d.ac || []) { const p = pack(a, false); if (p && !map.has(p[8])) map.set(p[8], p); } }
-      catch (e) { fail++; if (ok === 0 && fail >= 4) break; }
-    }
-    console.log(`${name}: ${ok} ok, ${fail} failed, ${map.size} aircraft`);
-    if (map.size) return { source: name, ac: [...map.values()] };
+  const map = new Map(); const used = new Set(); let ok = 0, fail = 0;
+  const add = (d, mil, name) => { used.add(name); for (const a of d.ac || []) { const p = pack(a, mil); if (p && (mil || !map.has(p[8]))) map.set(p[8], p); } };
+  for (const name of Object.keys(FEEDS)) {
+    try { add(await ask(name, FEEDS[name].mil), true, name); break; } catch (e) { console.log(name, "mil", e.message); }
   }
-  return null;
+  for (const [la, lo] of points()) {
+    let got = false;
+    for (const name of Object.keys(FEEDS)) {
+      try { add(await ask(name, FEEDS[name].point(la.toFixed(2), lo.toFixed(2))), false, name); ok++; got = true; break; } catch {}
+    }
+    if (!got) fail++;
+  }
+  console.log(`areas: ${ok} ok, ${fail} failed; ${map.size} aircraft from ${[...used].join(" + ")}`);
+  return map.size ? { source: [...used].join(" + "), ac: [...map.values()] } : null;
 }
 
 const AIS_BOXES = [
