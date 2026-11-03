@@ -11,7 +11,7 @@ async function getJSON(url, ms = 15000) {
   const t = setTimeout(() => ctl.abort(), ms);
   try {
     const r = await fetch(url, { headers: UA, signal: ctl.signal });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status} ${r.headers.get("retry-after") ? "retry-after " + r.headers.get("retry-after") : ""}`.trim());
     return await r.json();
   } finally { clearTimeout(t); }
 }
@@ -55,7 +55,7 @@ async function ask(name, url) {
   return getJSON(url);
 }
 async function aircraft() {
-  const map = new Map(); const used = new Set(); let ok = 0, fail = 0;
+  const map = new Map(); const used = new Set(); const errs = {}; let ok = 0, fail = 0;
   const add = (d, mil, name) => { used.add(name); for (const a of d.ac || []) { const p = pack(a, mil); if (p && (mil || !map.has(p[8]))) map.set(p[8], p); } };
   for (const name of Object.keys(FEEDS)) {
     try { add(await ask(name, FEEDS[name].mil), true, name); break; } catch (e) { console.log(name, "mil", e.message); }
@@ -63,7 +63,8 @@ async function aircraft() {
   for (const [la, lo] of points()) {
     let got = false;
     for (const name of Object.keys(FEEDS)) {
-      try { add(await ask(name, FEEDS[name].point(la.toFixed(2), lo.toFixed(2))), false, name); ok++; got = true; break; } catch {}
+      try { add(await ask(name, FEEDS[name].point(la.toFixed(2), lo.toFixed(2))), false, name); ok++; got = true; break; }
+      catch (e) { if ((errs[name] = (errs[name] || 0) + 1) <= 3) console.log(`${name} area ${la},${lo}: ${e.message}`); }
     }
     if (!got) fail++;
   }
