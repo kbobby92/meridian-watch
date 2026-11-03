@@ -444,10 +444,9 @@ function initGlobe() {
   G = Globe({ animateIn: !reduced })($("globe"))
     .backgroundColor("rgba(0,0,0,0)")
     .showAtmosphere(true).atmosphereColor("#3d6bc4").atmosphereAltitude(0.15)
-    .hexPolygonsData(land).hexPolygonResolution(3).hexPolygonMargin(0.45).hexPolygonUseDots(true)
-    .hexPolygonColor(() => "rgba(140,165,200,0.5)")
-    .polygonsData(land).polygonCapColor(() => "rgba(0,0,0,0)").polygonSideColor(() => "rgba(0,0,0,0)")
-    .polygonStrokeColor(() => "rgba(110,140,180,0.2)").polygonAltitude(0.002)
+    /* Land is painted into one texture (dotted fill + outlines) instead of thousands of 3D dot and
+       outline meshes, which the globe hit-tested on every mouse move and which froze dragging. */
+    .globeImageUrl(landTexture(land))
     .ringColor(d => t => sevOf(d.score)[2] + Math.round(Math.max(0, 1 - t) * 190).toString(16).padStart(2, "0"))
     .ringMaxRadius(d => 1.6 + d.score / 24).ringPropagationSpeed(1.4).ringRepeatPeriod(d => 2700 - d.score * 12)
     .pointLat("lat").pointLng("lng")
@@ -464,12 +463,40 @@ function initGlobe() {
        Clicking the globe picks the nearest aircraft or vessel instead (see inspectAt). */
     .onGlobeClick(({ lat, lng }) => inspectAt(lat, lng));
   try { G.renderer().setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5)); } catch {}
-  const m = G.globeMaterial(); m.color.set("#0d1724"); m.emissive && m.emissive.set("#060c15"); m.shininess = 4;
+  const m = G.globeMaterial(); m.shininess = 4;
   G.pointOfView({ lat: 28, lng: 40, altitude: 2.35 }, 0);
   const ctr = G.controls(); ctr.autoRotate = !reduced; ctr.autoRotateSpeed = 0.22;
   ctr.addEventListener("change", () => { if (!vlPending) { vlPending = true; setTimeout(() => { vlPending = false; viewLinks(); }, 250); } });
   $("globe").addEventListener("pointerdown", () => { ctr.autoRotate = false; }, { once: true });
   new ResizeObserver(() => { const r = $("globe").getBoundingClientRect(); G.width(r.width).height(r.height); }).observe($("globe"));
+}
+function landTexture(features) {
+  const W = 4096, H = 2048, c = document.createElement("canvas"); c.width = W; c.height = H;
+  const x = c.getContext("2d");
+  x.fillStyle = "#0d1724"; x.fillRect(0, 0, W, H);
+  const pat = document.createElement("canvas"); pat.width = pat.height = 9;
+  const px = pat.getContext("2d"); px.fillStyle = "rgba(140,165,200,0.62)"; px.beginPath(); px.arc(4.5, 4.5, 1.7, 0, Math.PI * 2); px.fill();
+  const path = new Path2D();
+  const ring = coords => {
+    let prev = null, off = 0; const pts = [];
+    for (const [lng, lat] of coords) {
+      if (prev != null && Math.abs(lng + off - prev) > 180) off += prev > lng + off ? 360 : -360;
+      const L = lng + off; pts.push([L, lat]); prev = L;
+    }
+    for (const shift of [-360, 0, 360]) {
+      pts.forEach(([L, lat], i) => { const X = (L + shift + 180) / 360 * W, Y = (90 - lat) / 180 * H; i ? path.lineTo(X, Y) : path.moveTo(X, Y); });
+      path.closePath();
+    }
+  };
+  for (const f of features) {
+    const g = f.geometry; if (!g) continue;
+    const polys = g.type === "Polygon" ? [g.coordinates] : g.type === "MultiPolygon" ? g.coordinates : [];
+    for (const poly of polys) for (const r of poly) ring(r);
+  }
+  x.fillStyle = "rgba(120,145,180,0.07)"; x.fill(path, "evenodd");
+  x.fillStyle = x.createPattern(pat, "repeat"); x.fill(path, "evenodd");
+  x.strokeStyle = "rgba(110,140,180,0.32)"; x.lineWidth = 1.3; x.stroke(path);
+  return c.toDataURL("image/png");
 }
 function drawGlobe() {
   if (G) {
