@@ -437,7 +437,7 @@ function setFeed(id, cls, text) { const el = $(id); el.className = "st " + cls; 
 
 /* ---------- globe ---------- */
 const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-let G = null, vlPending = false;
+let G = null, vlPending = false, pointClickAt = 0;
 function initGlobe() {
   if (typeof Globe !== "function") { $("globe").innerHTML = '<div class="empty" style="margin:60px 20px"><b>The globe could not load.</b>Check your connection and reopen the page.</div>'; return; }
   const land = topojson.feature(COUNTRIES, COUNTRIES.objects.countries).features;
@@ -454,20 +454,36 @@ function initGlobe() {
     .pointRadius(d => (d.id === state.open ? 0.75 : 0.32) + d.score / 170)
     .pointColor(d => d.id === state.open ? "#ffffff" : sevOf(d.score)[2]).pointResolution(16)
     .pointLabel(d => `<div class="tip"><b>${esc(d.name)}</b><br><span>Index ${d.score} · ${sevOf(d.score)[0]} · click for dossier</span></div>`)
-    .onPointClick(d => openDossier(d.id))
+    .onPointClick(d => { pointClickAt = Date.now(); openDossier(d.id); })
     .htmlElementsData([]).htmlLat("lat").htmlLng("lng").htmlAltitude(0.01)
     .htmlElement(d => { const el = document.createElement("div"); el.className = "cp-label"; el.style.setProperty("--dc", CP_COLOR[d.status] || "var(--choke)"); el.textContent = d.short || d.name; el.title = d.name + " · " + d.status + (d.flowPre != null ? ` · oil now ${d.flowNow}M barrels/day (was ${d.flowPre}M)` : ""); el.onclick = () => showChoke(d.id); return el; })
     .particlesData([]).particlesList(d => d.pts).particleLat("lat").particleLng("lng").particleAltitude("alt")
     .particlesColor(d => d.color).particlesSize(d => d.size).particlesSizeAttenuation(false)
     /* No hover labels on traffic: hit-testing thousands of particles on every mouse move froze the globe.
        Clicking the globe picks the nearest aircraft or vessel instead (see inspectAt). */
-    .onGlobeClick(({ lat, lng }) => inspectAt(lat, lng));
+    /* globe.gl 2.46 throws inside its render loop when the pointer rests on a particle (its default
+       particle label reads .name of undefined), which stops the globe. Give particles an empty label
+       and keep them out of pointer events so clicks fall through to the globe. */
+    .particleLabel(() => "")
+    .pointerEventsFilter(obj => !(obj && obj.__globeObjType === "particles"));
   try { G.renderer().setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5)); } catch {}
   const m = G.globeMaterial(); m.shininess = 4;
   G.pointOfView({ lat: 28, lng: 40, altitude: 2.35 }, 0);
   const ctr = G.controls(); ctr.autoRotate = !reduced; ctr.autoRotateSpeed = 0.22;
   ctr.addEventListener("change", () => { if (!vlPending) { vlPending = true; setTimeout(() => { vlPending = false; viewLinks(); }, 250); } });
   $("globe").addEventListener("pointerdown", () => { ctr.autoRotate = false; }, { once: true });
+  /* Clicks are resolved here rather than through the library's click events, which swallow clicks
+     that land exactly on a traffic dot: a press-and-release without dragging picks the nearest
+     aircraft or vessel to that spot on the globe. */
+  let downXY = null;
+  $("globe").addEventListener("pointerdown", e => { downXY = [e.clientX, e.clientY]; });
+  $("globe").addEventListener("pointerup", e => {
+    if (!downXY) return;
+    const moved = Math.hypot(e.clientX - downXY[0], e.clientY - downXY[1]); downXY = null;
+    if (moved > 5 || e.target.closest(".cp-label")) return;
+    const r = $("globe").getBoundingClientRect(), c = G.toGlobeCoords(e.clientX - r.left, e.clientY - r.top);
+    setTimeout(() => { if (Date.now() - pointClickAt < 400) return; c ? inspectAt(c.lat, c.lng) : closeInspect(); }, 60);
+  });
   new ResizeObserver(() => { const r = $("globe").getBoundingClientRect(); G.width(r.width).height(r.height); }).observe($("globe"));
 }
 function landTexture(features) {
