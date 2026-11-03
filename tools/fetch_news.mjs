@@ -1,7 +1,6 @@
 // Breaking news for Meridian Watch, fetched server-side every run of the site workflow.
 //  - breaking.json: recent headlines from major outlets' public RSS feeds plus GDELT's article
 //    index, kept only when they match a tracked hotspot, newest first.
-//  - events.json: places named in recent conflict-related news (GDELT GEO), for pins on the globe.
 // Raw, unverified headlines: they are not checked or ranked. Node 22+, no dependencies.
 import { readFileSync, writeFileSync } from "node:fs";
 
@@ -69,34 +68,15 @@ function parseFeed(xml, source) {
 
 const GDELT_TERMS = '(Iran OR Hormuz OR Ukraine OR Kyiv OR Gaza OR Hezbollah OR Houthi OR Sudan OR Congo OR Taiwan OR "North Korea" OR Venezuela OR Iraq OR Syria OR Somalia)';
 async function gdeltArticles() {
-  const q = encodeURIComponent(`${GDELT_TERMS} (strike OR attack OR missile OR drone OR killed OR troops OR ceasefire OR sanctions OR talks) sourcelang:english`);
-  const j = JSON.parse(await get(`https://api.gdeltproject.org/api/v2/doc/doc?query=${q}&mode=ArtList&maxrecords=75&timespan=3h&sort=DateDesc&format=json`));
+  const q = encodeURIComponent(`${GDELT_TERMS} sourcelang:english`);
+  const txt = await get(`https://api.gdeltproject.org/api/v2/doc/doc?query=${q}&mode=ArtList&maxrecords=75&timespan=3h&sort=DateDesc&format=json`);
+  let j; try { j = JSON.parse(txt); } catch { throw new Error("GDELT said: " + txt.slice(0, 160).replace(/\s+/g, " ")); }
   return (j.articles || []).map(a => {
     const s = a.seendate || ""; // 20261103T201500Z
     const t = Date.parse(`${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}T${s.slice(9, 11)}:${s.slice(11, 13)}:${s.slice(13, 15)}Z`);
     return isNaN(t) || !a.title || !a.url ? null : { t: new Date(t).toISOString(), title: decode(a.title), url: a.url, source: a.domain || "GDELT", hotspot: tag(a.title), via: "GDELT" };
   }).filter(Boolean);
 }
-async function gdeltEvents() {
-  const q = encodeURIComponent('(airstrike OR "air strike" OR missile OR shelling OR explosion OR "drone strike" OR drone attack OR clashes) sourcelang:english');
-  const j = JSON.parse(await get(`https://api.gdeltproject.org/api/v2/geo/geo?query=${q}&mode=PointData&format=GeoJSON&timespan=24h&maxpoints=120`));
-  return (j.features || []).map(f => {
-    const [lng, lat] = f.geometry?.coordinates || [];
-    const p = f.properties || {};
-    const links = [...String(p.html || "").matchAll(/<a href="([^"]+)"[^>]*title="([^"]*)"/g)].slice(0, 4).map(m => ({ url: m[1], title: decode(m[2]) }));
-    return lat == null ? null : { lat: +(+lat).toFixed(3), lng: +(+lng).toFixed(3), name: decode(p.name || ""), count: p.count || 1, links };
-  }).filter(e => e && e.links.length);
-}
-
-// One-off check of Liveuamap regional map addresses (logged only; the page uses the confirmed list).
-async function checkLiveuamap() {
-  const subs = ["", "iran.", "israelpalestine.", "syria.", "yemen.", "iraq.", "sudan.", "africa.", "asia.", "china.", "russia.", "venezuela.", "latam.", "mideast.", "korea.", "baltic."];
-  for (const s of subs) {
-    try { const r = await fetch(`https://${s}liveuamap.com/`, { method: "GET", headers: UA, redirect: "manual" }); console.log(`liveuamap ${s || "(root)"}: ${r.status} ${r.headers.get("location") || ""}`); }
-    catch (e) { console.log(`liveuamap ${s}: ${e.message}`); }
-  }
-}
-
 const now = Date.now(), DAY = 24 * 3600e3;
 const items = [];
 for (const [name, url] of FEEDS) {
@@ -104,10 +84,6 @@ for (const [name, url] of FEEDS) {
   catch (e) { console.log(`${name}: ${e.message}`); }
 }
 try { const g = await gdeltArticles(); items.push(...g); console.log(`GDELT articles: ${g.length}, ${g.filter(x => x.hotspot).length} on hotspots`); } catch (e) { console.log(`GDELT articles: ${e.message}`); }
-await sleep(5500);
-let events = [];
-try { events = await gdeltEvents(); console.log(`GDELT events: ${events.length}`); } catch (e) { console.log(`GDELT events: ${e.message}`); }
-if (process.env.CHECK_LIVEUAMAP) await checkLiveuamap();
 
 const seen = new Set();
 const norm = s => s.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").slice(0, 80);
@@ -118,5 +94,4 @@ const breaking = items
   .slice(0, 80);
 const at = new Date().toISOString();
 writeFileSync("breaking.json", JSON.stringify({ at, items: breaking }));
-if (events.length) writeFileSync("events.json", JSON.stringify({ at, source: "GDELT", events }));
-console.log(`breaking: ${breaking.length} items; events: ${events.length}`);
+console.log(`breaking: ${breaking.length} items`);

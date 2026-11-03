@@ -187,6 +187,22 @@ a.btn .sw { width: 8px; height: 8px; border-radius: 2px; }
 .site .st[data-site] { display: inline-flex !important; }
 .toolbar .msg { flex-basis: 100%; }
 
+/* breaking */
+.bk-n { display: inline-block; min-width: 16px; margin-left: 5px; padding: 0 4px; border-radius: 8px; background: var(--crit); color: #fff; font-family: var(--font-mono); font-size: 10px; line-height: 16px; text-align: center; }
+.bk-n:empty { display: none; }
+.bk { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 2px 10px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+.bk:last-child { border-bottom: 0; }
+.bk .when { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); padding-top: 2px; }
+.bk .when.new { color: var(--crit); }
+.bk h4 { margin: 0; font-size: 13px; font-weight: 600; line-height: 1.35; }
+.bk h4 a { color: var(--text); }
+.bk h4 a:hover { color: var(--accent); text-decoration: none; }
+.bk .meta { grid-column: 2; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 11px; color: var(--text-3); margin-top: 3px; }
+.brkstrip { display: none; }
+.site.compact[data-ctab="brief"] .brkstrip { display: block; border-bottom: 1px solid var(--border); }
+.brkstrip .wrap { padding-block: 10px 6px; }
+.bk-more { margin: 6px 0 4px; background: none; border: 0; padding: 4px 0; color: var(--accent); font-size: 12.5px; cursor: pointer; }
+
 /* view toggle */
 .viewtog { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-2); color: var(--text-2); cursor: pointer; flex: none; }
 .viewtog:hover { color: var(--text); border-color: var(--text-3); }
@@ -226,7 +242,7 @@ a.btn .sw { width: 8px; height: 8px; border-radius: 2px; }
 .compact[data-ctab="brief"] .kpis, .compact[data-ctab="brief"] .topnews { display: block; }
 .compact[data-ctab="brief"] .rail { display: flex; }
 .compact[data-ctab="brief"] #p-news[hidden], .compact[data-ctab="brief"] #p-timeline[hidden] { display: block !important; }
-.compact[data-ctab="brief"] #p-risk, .compact[data-ctab="brief"] #p-markets, .compact[data-ctab="brief"] #p-sea { display: none !important; }
+.compact[data-ctab="brief"] #p-risk, .compact[data-ctab="brief"] #p-markets, .compact[data-ctab="brief"] #p-sea, .compact[data-ctab="brief"] #p-break { display: none !important; }
 .compact.dossier-open #d-body { display: block !important; flex: 1; min-height: 0; overflow-y: auto; }
 .compact[data-ctab="brief"] #p-timeline { border-top: 1px solid var(--border); margin-top: 6px; }
 .compact .kpis .wrap { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
@@ -297,8 +313,8 @@ a.btn .sw { width: 8px; height: 8px; border-radius: 2px; }
 .flow { margin-top: 8px; display: grid; gap: 3px; }
 .fr { display: grid; grid-template-columns: 52px minmax(0, 1fr) 34px; gap: 8px; align-items: center; font-size: 11px; color: var(--text-3); }
 .fr .mono { text-align: right; color: var(--text); }
-.fbar { height: 6px; background: var(--surface-3); border-radius: 1px; overflow: hidden; }
-.fbar span { display: block; height: 100%; border-radius: 1px; }
+.flowbar { height: 6px; background: var(--surface-3); border-radius: 1px; overflow: hidden; }
+.flowbar span { display: block; height: 100%; border-radius: 1px; }
 .fl-n { font-size: 11.5px; color: var(--text-3); margin-top: 2px; }
 .xp { padding: 8px 0; border-bottom: 1px solid var(--border); }
 .xp:last-child { border-bottom: 0; }
@@ -392,6 +408,7 @@ a.btn .sw { width: 8px; height: 8px; border-radius: 2px; }
     <button class="viewtog" id="viewToggle" type="button" aria-label="Switch to compact view" title="Switch to compact view"></button>
   </div></header>
 
+  <section class="brkstrip" id="brkstrip" aria-label="Breaking news"><div class="wrap" id="brkstrip-in"></div></section>
   <section class="kpis" aria-label="Summary"><div class="wrap">
     <div class="kpi"><div class="label">Global index</div><div class="v" id="k-avg">—</div><div class="s">Mean of tracked hotspots</div></div>
     <div class="kpi"><div class="label">Critical / High</div><div class="v" id="k-crit">—</div><div class="s" id="k-crit-s">Hotspots at 65+</div></div>
@@ -441,13 +458,15 @@ a.btn .sw { width: 8px; height: 8px; border-radius: 2px; }
     <aside class="panel rail" id="rail">
       <div id="overview" style="display:flex;flex-direction:column;min-height:0;flex:1">
         <div class="tabs" role="tablist">
-          <button role="tab" aria-selected="true" data-tab="risk">Risk index</button>
+          <button role="tab" aria-selected="true" data-tab="risk">Risk</button>
+          <button role="tab" aria-selected="false" data-tab="break" data-site>Breaking<span class="bk-n" id="bk-n"></span></button>
           <button role="tab" aria-selected="false" data-tab="markets">Markets</button>
           <button role="tab" aria-selected="false" data-tab="sea">Trade</button>
           <button role="tab" aria-selected="false" data-tab="news">Reporting</button>
           <button role="tab" aria-selected="false" data-tab="timeline">Timeline</button>
         </div>
         <div class="pane" id="p-risk" role="tabpanel"></div>
+        <div class="pane" id="p-break" role="tabpanel" hidden></div>
         <div class="pane" id="p-markets" role="tabpanel" hidden></div>
         <div class="pane" id="p-news" role="tabpanel" hidden></div>
         <div class="pane" id="p-timeline" role="tabpanel" hidden></div>
@@ -518,12 +537,12 @@ function initGlobe() {
        outline meshes, which the globe hit-tested on every mouse move and which froze dragging. */
     .globeImageUrl(landTexture(land))
     .ringColor(d => t => sevOf(d.score)[2] + Math.round(Math.max(0, 1 - t) * 190).toString(16).padStart(2, "0"))
-    .ringMaxRadius(d => 1.6 + d.score / 24).ringPropagationSpeed(1.4).ringRepeatPeriod(d => 2700 - d.score * 12)
+    .ringMaxRadius(d => 1.6 + d.score / 24 + (breakingCount(d.id) ? 1.2 : 0)).ringPropagationSpeed(d => breakingCount(d.id) ? 2.6 : 1.4).ringRepeatPeriod(d => breakingCount(d.id) ? 900 : 2700 - d.score * 12)
     .pointLat("lat").pointLng("lng")
     .pointAltitude(d => (d.id === state.open ? 0.06 : 0.01) + d.score / 2200)
     .pointRadius(d => (d.id === state.open ? 0.75 : 0.32) + d.score / 170)
     .pointColor(d => d.id === state.open ? "#ffffff" : sevOf(d.score)[2]).pointResolution(16)
-    .pointLabel(d => `<div class="tip"><b>${esc(d.name)}</b><br><span>Index ${d.score} · ${sevOf(d.score)[0]} · click for dossier</span></div>`)
+    .pointLabel(d => { const n = breakingCount(d.id); return `<div class="tip"><b>${esc(d.name)}</b><br><span>Index ${d.score} · ${sevOf(d.score)[0]}${n ? ` · <b style="display:inline;color:var(--crit)">${n} new in the last hour</b>` : ""} · click for dossier</span></div>`; })
     .onPointClick(d => { pointClickAt = Date.now(); openDossier(d.id); })
     .htmlElementsData([]).htmlLat("lat").htmlLng("lng").htmlAltitude(0.01)
     .htmlElement(d => { const el = document.createElement("div"); el.className = "cp-label"; el.style.setProperty("--dc", CP_COLOR[d.status] || "var(--choke)"); el.textContent = d.short || d.name; el.title = d.name + " · " + d.status + (d.flowPre != null ? ` · oil now ${d.flowNow}M barrels/day (was ${d.flowPre}M)` : ""); el.onclick = () => showChoke(d.id); return el; })
@@ -662,7 +681,7 @@ function renderKpis() {
 /* ---------- overview tabs ---------- */
 document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => {
   document.querySelectorAll(".tabs button").forEach(x => x.setAttribute("aria-selected", x === b));
-  ["risk","markets","sea","news","timeline"].forEach(t => { $("p-" + t).hidden = t !== b.dataset.tab; });
+  ["risk","break","markets","sea","news","timeline"].forEach(t => { $("p-" + t).hidden = t !== b.dataset.tab; });
 }));
 const emptyBlock = (t, b) => `<div class="empty"><b>${t}</b>${b}</div>`;
 function spark(arr, color, w = 56, h = 20) {
@@ -729,8 +748,8 @@ function renderSea() {
   const cps = [...state.chokepoints].sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9)).map(c => {
     const col = CP_COLOR[c.status] || "var(--text-3)"; const fc = flowChg(c);
     const flow = c.flowPre != null ? `<div class="flow">
-      <div class="fr"><span class="fl-l">Before</span><span class="fbar"><span style="width:${(c.flowPre / maxF * 100).toFixed(1)}%;background:var(--border-strong)"></span></span><span class="mono">${c.flowPre.toFixed(1)}</span></div>
-      <div class="fr"><span class="fl-l">Now</span><span class="fbar"><span style="width:${(c.flowNow / maxF * 100).toFixed(1)}%;background:${col}"></span></span><span class="mono">${c.flowNow.toFixed(1)}</span></div>
+      <div class="fr"><span class="fl-l">Before</span><span class="flowbar"><span style="width:${(c.flowPre / maxF * 100).toFixed(1)}%;background:var(--border-strong)"></span></span><span class="mono">${c.flowPre.toFixed(1)}</span></div>
+      <div class="fr"><span class="fl-l">Now</span><span class="flowbar"><span style="width:${(c.flowNow / maxF * 100).toFixed(1)}%;background:${col}"></span></span><span class="mono">${c.flowNow.toFixed(1)}</span></div>
       <div class="fl-n">${Math.abs(fc) < 5 ? "About the same as before the war" : `<b style="color:${fc < 0 ? "var(--down)" : "var(--up)"};font-weight:500">${fc < 0 ? "Down" : "Up"} ${Math.abs(fc).toFixed(0)}%</b> from before the war`}. ${esc(c.share || "")}</div></div>` : "";
     return `<div class="cp" tabindex="0" data-id="${esc(c.id)}"><div class="cp-h"><b>${esc(c.name)}</b><span class="pill" style="color:${col}">${esc(c.status)}</span></div><p>${esc(c.detail)}</p>${c.transits ? `<div class="tx">${esc(c.transits)}</div>` : ""}${flow}<a class="src" href="${trackerLinks(c.lat, c.lng, 6).mt}" target="_blank" rel="noopener">Live vessels here · MarineTraffic ↗</a></div>`;
   }).join("");
@@ -842,6 +861,9 @@ function renderDossier() {
     <div class="sec"><div class="label">Latest coverage</div>
       <div class="tlinks"><a class="btn link" href="${gnWeb(h, "1d")}" target="_blank" rel="noopener">Past 24 hours · Google News ↗</a><a class="btn link" href="${gnWeb(h, "7d")}" target="_blank" rel="noopener">Past 7 days ↗</a></div>
       <p class="foot" style="margin-top:8px">Searches “${esc(h.query || h.name)}” across news outlets, newest first.</p></div>
+    ${(() => { const bk = state.breaking.filter(x => x.hotspot === h.id).slice(0, 5);
+      return BUILD === "site" ? `<div class="sec"><div class="label">Breaking<span class="aux muted">${bk.length ? "raw headlines, not checked" : ""}</span></div>${bk.length ? bk.map(bkHtml).join("") : '<p class="muted">No matching headlines in the last 24 hours.</p>'}</div>` : ""; })()}
+    ${LIVEUAMAP[h.id] ? `<div class="sec"><div class="label">Live incident map</div><a class="btn link" href="${LIVEUAMAP[h.id]}" target="_blank" rel="noopener">${esc(h.name)} on Liveuamap ↗</a><p class="foot" style="margin-top:8px">Liveuamap plots reported strikes, clashes and other incidents as they are posted. Opens their site.</p></div>` : ""}
     <div class="sec"><div class="label">Live traffic around this hotspot</div>
       <div class="tlinks">${(() => { const T = trackerLinks(h.lat, h.lng, 6); return `<a class="btn link" href="${T.fr24}" target="_blank" rel="noopener"><span class="sw" style="background:var(--flight)"></span>Aircraft · Flightradar24 ↗</a><a class="btn link" href="${T.adsbx}" target="_blank" rel="noopener"><span class="sw" style="background:var(--flight)"></span>Incl. military · ADS-B Exchange ↗</a><a class="btn link" href="${T.mt}" target="_blank" rel="noopener"><span class="sw" style="background:var(--ship)"></span>Ships · MarineTraffic ↗</a>`; })()}</div></div>
     <div class="sec"><div class="label">Briefing reports<span class="aux muted">${briefs.length} sourced</span></div>
@@ -916,6 +938,44 @@ function viewLinks() {
 }
 
 /* ---------- briefing data (shared store) ---------- */
+/* ---------- breaking ---------- */
+const LIVEUAMAP = { iran: "https://iran.liveuamap.com", ukraine: "https://liveuamap.com", levant: "https://israelpalestine.liveuamap.com",
+  yemen: "https://yemen.liveuamap.com", sudan: "https://sudan.liveuamap.com", drc: "https://africa.liveuamap.com", taiwan: "https://asia.liveuamap.com",
+  scs: "https://asia.liveuamap.com", blacksea: "https://liveuamap.com", baltic: "https://russia.liveuamap.com", horn: "https://africa.liveuamap.com",
+  korea: "https://korea.liveuamap.com", venezuela: "https://venezuela.liveuamap.com", iraq: "https://iraq.liveuamap.com" };
+state.breaking = []; state.breakingAt = 0; state.bkFilter = "All"; state.bkAll = false;
+const breakingCount = id => state.breaking.filter(x => x.hotspot === id && Date.now() - Date.parse(x.t) < 3600e3).length;
+function bkHtml(x, showHot) {
+  const h = state.hotspots.find(y => y.id === x.hotspot), age = Date.now() - Date.parse(x.t), isNew = age < 3600e3;
+  return `<div class="bk"><div class="when${isNew ? " new" : ""}">${ago(Date.parse(x.t)).replace(" ago", "")}</div>
+    <h4><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a></h4>
+    <div class="meta"><span>${esc(x.source)}</span>${showHot && h ? `<button class="hchip" data-hot="${esc(h.id)}"><i style="background:${sevOf(h.score)[1]}"></i>${esc(h.name)}</button>` : ""}</div></div>`;
+}
+function renderBreaking() {
+  if (BUILD !== "site") return;
+  const p = $("p-break"), items = state.breaking;
+  const n1h = items.filter(x => Date.now() - Date.parse(x.t) < 3600e3).length;
+  $("bk-n").textContent = n1h ? String(n1h) : "";
+  const note = `<p class="foot" style="margin:0 0 10px">Raw headlines from BBC, Al Jazeera, The Guardian, DW, France 24 and NPR that mention a tracked hotspot, refreshed about every 10 minutes${state.breakingAt ? ` (last check ${ago(state.breakingAt)})` : ""}. They are not checked or ranked; the curated briefing is under Top stories.</p>`;
+  if (!items.length) { p.innerHTML = `<div class="pane-inner">${note}${emptyBlock("No breaking headlines yet", "Headlines that mention a tracked hotspot appear here within about 10 minutes.")}</div>`; $("brkstrip-in").innerHTML = ""; return; }
+  const hots = ["All", ...new Set(items.map(x => x.hotspot))];
+  if (!hots.includes(state.bkFilter)) state.bkFilter = "All";
+  const list = items.filter(x => state.bkFilter === "All" || x.hotspot === state.bkFilter);
+  p.innerHTML = `<div class="pane-inner">${note}<div class="fbar">${hots.map(k => { const h = state.hotspots.find(y => y.id === k); return `<button aria-pressed="${k === state.bkFilter}" data-k="${esc(k)}">${esc(k === "All" ? "All" : (h ? h.name : k))}</button>`; }).join("")}</div>${list.map(x => bkHtml(x, true)).join("")}</div>`;
+  p.querySelectorAll(".fbar button").forEach(b => b.onclick = () => { state.bkFilter = b.dataset.k; renderBreaking(); });
+  bindHotChips(p);
+  const show = state.bkAll ? items : items.slice(0, 5);
+  $("brkstrip-in").innerHTML = `<div class="sub"><span class="label" style="color:var(--crit)">Breaking</span><span class="muted">${n1h ? n1h + " in the last hour" : "latest headlines"}</span></div>${show.map(x => bkHtml(x, true)).join("")}${items.length > 5 ? `<button class="bk-more" id="bk-more">${state.bkAll ? "Show fewer" : `See all ${items.length} breaking headlines`}</button>` : ""}<p class="foot" style="margin:4px 0 6px">Raw headlines, refreshed about every 10 minutes; not checked or ranked.</p>`;
+  const more = $("bk-more"); if (more) more.onclick = () => { state.bkAll = !state.bkAll; renderBreaking(); };
+  bindHotChips($("brkstrip-in"));
+}
+async function loadBreaking() {
+  try {
+    const d = await getJSON("breaking.json?t=" + Date.now(), 20000);
+    state.breaking = (d.items || []).filter(x => x.hotspot); state.breakingAt = Date.parse(d.at);
+    renderBreaking(); if (G) G.ringsData(state.layers.hot ? [...state.hotspots] : []); if (state.open) renderDossier();
+  } catch {}
+}
 function renderTop() {
   const row = $("tn-row");
   if (!state.news.length) return;
@@ -936,7 +996,7 @@ function renderTop() {
   bindHotChips(row);
 }
 $("tn-all").onclick = () => { closeDossier(true); if (isCompact()) { $("p-news").scrollIntoView({ behavior: reduced ? "auto" : "smooth" }); return; } document.querySelector('.tabs button[data-tab="news"]').click(); $("rail").scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" }); };
-function renderAll() { renderKpis(); renderTop(); renderRisk(); renderMarkets(); renderNews(); renderTimeline(); renderSea(); drawGlobe(); if (state.open) renderDossier(); }
+function renderAll() { renderKpis(); renderBreaking(); renderTop(); renderRisk(); renderMarkets(); renderNews(); renderTimeline(); renderSea(); drawGlobe(); if (state.open) renderDossier(); }
 let hashTried = false;
 /* ---------- site build: briefing from data.json, live aircraft + vessels ---------- */
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -1025,7 +1085,7 @@ async function trafficLoop() {
       shipSrc = s.source; shipAt = Date.parse(s.at);
       setFeed("f-ships", Date.now() - shipAt < 40 * 60000 ? "live" : "warn", `Vessels · ${hhmmZ(shipAt)}`);
     } catch { if (!shipAt) setFeed("f-ships", "", "Vessels · off"); }
-    composeTraffic();
+    composeTraffic(); loadBreaking();
   };
   await load();
   setInterval(() => { if (!document.hidden) load(); }, 2 * 60000);

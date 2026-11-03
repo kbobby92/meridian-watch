@@ -35,16 +35,14 @@ jobs:
         continue-on-error: true
         env:
           AISSTREAM_KEY: ${{ secrets.AISSTREAM_KEY }}
-      - name: Fetch breaking news and news-event locations
+      - name: Fetch breaking news
         run: node tools/fetch_news.mjs
         continue-on-error: true
-        env:
-          CHECK_LIVEUAMAP: "1"
       - name: Assemble site
         run: |
           mkdir -p _site
           cp index.html data.json README.md .nojekyll _site/
-          for f in aircraft.json ships.json breaking.json events.json; do [ -f "$f" ] && cp "$f" _site/ || true; done
+          for f in aircraft.json ships.json breaking.json; do [ -f "$f" ] && cp "$f" _site/ || true; done
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
