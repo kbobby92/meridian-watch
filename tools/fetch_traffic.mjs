@@ -48,11 +48,22 @@ const FEEDS = {
   "adsb.lol": { mil: "https://api.adsb.lol/v2/mil", point: (la, lo) => `https://api.adsb.lol/v2/point/${la}/${lo}/250`, next: 0 },
   "airplanes.live": { mil: "https://api.airplanes.live/v2/mil", point: (la, lo) => `https://api.airplanes.live/v2/point/${la}/${lo}/250`, next: 0 }
 };
+// adsb.lol allows roughly 18 requests a minute and answers 429 with a Retry-After;
+// honour it (up to ~65 s) and try the same request again.
 async function ask(name, url) {
-  const f = FEEDS[name]; const wait = f.next - Date.now();
-  if (wait > 0) await sleep(wait);
-  f.next = Date.now() + 1500;
-  return getJSON(url);
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const f = FEEDS[name]; const wait = f.next - Date.now();
+    if (wait > 0) await sleep(wait);
+    f.next = Date.now() + 1500;
+    try { return await getJSON(url); }
+    catch (e) {
+      const m = /HTTP 429(?: retry-after (\d+))?/.exec(e.message);
+      if (!m || attempt === 3) throw e;
+      const secs = Math.min(+(m[1] || 30), 65) + 1;
+      console.log(`${name}: rate limited, waiting ${secs}s`);
+      f.next = Date.now() + secs * 1000;
+    }
+  }
 }
 async function aircraft() {
   const map = new Map(); const used = new Set(); const errs = {}; let ok = 0, fail = 0;
@@ -62,7 +73,7 @@ async function aircraft() {
   }
   for (const [la, lo] of points()) {
     let got = false;
-    for (const name of Object.keys(FEEDS)) {
+    for (const name of ["adsb.lol"]) {
       try { add(await ask(name, FEEDS[name].point(la.toFixed(2), lo.toFixed(2))), false, name); ok++; got = true; break; }
       catch (e) { if ((errs[name] = (errs[name] || 0) + 1) <= 3) console.log(`${name} area ${la},${lo}: ${e.message}`); }
     }
