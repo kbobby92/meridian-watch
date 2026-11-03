@@ -1,0 +1,48 @@
+name: Publish site with live traffic
+
+# Rebuilds the site every 10 minutes with a fresh aircraft (and vessel) snapshot,
+# and whenever main changes (for example the twice-daily briefing data refresh).
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Fetch live traffic snapshot
+        run: node tools/fetch_traffic.mjs
+        continue-on-error: true
+        env:
+          AISSTREAM_KEY: ${{ secrets.AISSTREAM_KEY }}
+      - name: Assemble site
+        run: |
+          mkdir -p _site
+          cp index.html data.json README.md .nojekyll _site/
+          for f in aircraft.json ships.json; do [ -f "$f" ] && cp "$f" _site/ || true; done
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
