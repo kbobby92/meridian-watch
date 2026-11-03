@@ -61,7 +61,8 @@ function parseFeed(xml, source) {
     const desc = g(/<description>([\s\S]*?)<\/description>/) || g(/<summary[^>]*>([\s\S]*?)<\/summary>/);
     const t = Date.parse(when);
     if (!title || !/^https?:\/\//.test(url) || isNaN(t)) continue;
-    out.push({ t: new Date(t).toISOString(), title, url, source, hotspot: tag(`${title} ${title} ${desc}`) });
+    // Only the headline decides the hotspot; summaries mention too many places in passing.
+    out.push({ t: new Date(t).toISOString(), title, url, source, hotspot: tag(title) || null, desc });
   }
   return out;
 }
@@ -91,7 +92,8 @@ const breaking = items
   .filter(x => x.hotspot && now - Date.parse(x.t) < DAY && Date.parse(x.t) <= now + 5 * 60e3)
   .sort((a, b) => b.t.localeCompare(a.t))
   .filter(x => { const k = norm(x.title); if (seen.has(k)) return false; seen.add(k); return true; })
-  .slice(0, 80);
+  .slice(0, 80)
+  .map(({ desc, ...x }) => x);
 const at = new Date().toISOString();
 writeFileSync("breaking.json", JSON.stringify({ at, items: breaking }));
 console.log(`breaking: ${breaking.length} items`);
