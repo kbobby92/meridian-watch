@@ -39,8 +39,31 @@ const pack = (a, mil) => {
   if (a.lat == null || a.lon == null) return null;
   const alt = a.alt_baro === "ground" ? 0 : Math.round(+a.alt_baro || +a.alt_geom || 0);
   return [+a.lat.toFixed(3), +a.lon.toFixed(3), alt, Math.round(a.gs || 0), Math.round(a.track || 0),
-    (a.flight || "").trim(), a.t || "", mil || ((a.dbFlags || 0) & 1) ? 1 : 0, a.hex || ""];
+    (a.flight || "").trim(), a.t || "", mil || ((a.dbFlags || 0) & 1) ? 1 : 0, a.hex || "",
+    Math.round(Date.now() / 1000 - (a.seen_pos || 0)), "a"];
 };
+// Fields: [lat, lng, altFt, groundSpeedKt, trackDeg, callsign, type, military, hex, reportedAtEpochS, source]
+
+/* OpenSky returns every aircraft it sees worldwide in one request, which fills the gaps between the
+   adsb.lol circles (aircraft en route between hubs). Its free anonymous tier allows about 400 credits a
+   day and a worldwide request costs 4, so it is asked on every other scheduled run (~72 a day); the
+   runs in between reuse those positions from the previous snapshot if they are under 25 minutes old. */
+async function opensky() {
+  const r = await fetch("https://opensky-network.org/api/states/all", { headers: UA, signal: AbortSignal.timeout(30000) });
+  console.log(`OpenSky: HTTP ${r.status}, credits left ${r.headers.get("x-rate-limit-remaining") ?? "?"}`);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const d = await r.json();
+  return (d.states || []).filter(s => s[5] != null && s[6] != null).map(s => [
+    +s[6].toFixed(3), +s[5].toFixed(3), s[8] ? 0 : Math.round((s[7] ?? s[13] ?? 0) * 3.28084), Math.round((s[9] || 0) * 1.94384),
+    Math.round(s[10] || 0), (s[1] || "").trim(), "", 0, s[0], s[3] || d.time, "o"]);
+}
+async function previousOpenSky() {
+  try {
+    const d = await getJSON("https://kbobby92.github.io/meridian-watch/aircraft.json?t=" + Date.now(), 20000);
+    const cut = Date.now() / 1000 - 25 * 60;
+    return (d.ac || []).filter(a => a[10] === "o" && a[9] > cut);
+  } catch (e) { console.log("previous snapshot:", e.message); return []; }
+}
 
 // Two feeds, each asked at most about once every 1.5 s. Each area goes to adsb.lol first;
 // if that is refused (usually rate limiting) it is retried on airplanes.live.
@@ -80,6 +103,15 @@ async function aircraft() {
     if (!got) fail++;
   }
   console.log(`areas: ${ok} ok, ${fail} failed; ${map.size} aircraft from ${[...used].join(" + ")}`);
+  // Fill in everything outside the circles from OpenSky (fresh on alternate runs, reused otherwise).
+  const fresh = process.env.GITHUB_EVENT_NAME !== "schedule" || Math.floor(Date.now() / 600000) % 2 === 0;
+  let os = [];
+  if (fresh) { try { os = await opensky(); } catch (e) { console.log("OpenSky failed:", e.message); } }
+  if (!os.length) { os = await previousOpenSky(); if (os.length) console.log(`OpenSky: reusing ${os.length} positions from the previous snapshot`); }
+  let added = 0;
+  for (const a of os) if (!map.has(a[8])) { map.set(a[8], a); added++; }
+  if (added) used.add("OpenSky");
+  console.log(`OpenSky added ${added}; total ${map.size}`);
   return map.size ? { source: [...used].join(" + "), ac: [...map.values()] } : null;
 }
 

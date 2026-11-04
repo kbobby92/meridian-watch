@@ -646,7 +646,7 @@ function showInspect(p) {
     : `<button class="x" aria-label="Close">×</button><div class="label">${p.mil ? '<span style="color:var(--mil)">Military aircraft</span>' : "Aircraft"}</div><b>${esc(p.cs || p.hex)}</b>
        <div class="kv"><span>Type</span><span class="mono">${esc(p.type || "—")}</span><span>Altitude</span><span class="mono">${p.altFt ? Math.round(p.altFt).toLocaleString() + " ft" : "ground"}</span>
        <span>Speed</span><span class="mono">${p.gs ? Math.round(p.gs) + " kt" : "—"}</span><span>Heading</span><span class="mono">${p.trk != null ? Math.round(p.trk) + "°" : "—"}</span><span>Position</span><span class="mono">${pos}</span></div>
-       <p class="foot" style="margin:6px 0 0">${p.t ? `Position reported ${ago(p.t)}${p.live ? ", live feed (updates every 30 s)" : `, ${hhmmZ(p.t)} snapshot`}.` : ""}</p>
+       <p class="foot" style="margin:6px 0 0">${p.t ? `Position reported ${ago(p.t)} (${hhmmZ(p.t)})${p.live ? ", live feed" : ""} · ${p.src === "o" ? "OpenSky" : "adsb.lol"}.` : ""}</p>
        ${p.hex ? `<a href="https://globe.adsbexchange.com/?icao=${encodeURIComponent(p.hex)}" target="_blank" rel="noopener">Track live · ADS-B Exchange ↗</a>` : ""}`;
   box.hidden = false;
   box.querySelector(".x").onclick = closeInspect;
@@ -1038,7 +1038,7 @@ function nmBetween(la1, lo1, la2, lo2) {
   return 2 * 3440.1 * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 const toAc = (a, t, live) => ({ kind: "ac", lat: a[0], lng: a[1], altFt: a[2], alt: 0.004 + Math.min(a[2] || 0, 45000) / 45000 * 0.03,
-  gs: a[3], trk: a[4], cs: a[5], type: a[6], mil: !!a[7], hex: a[8], t, live });
+  gs: a[3], trk: a[4], cs: a[5], type: a[6], mil: !!a[7], hex: a[8], t: a[9] ? a[9] * 1000 : t, live, src: a[10] });
 const fromFeed = (x, mil, t) => (x.lat == null || x.lon == null) ? null : toAc([x.lat, x.lon, x.alt_baro === "ground" ? 0 : Math.round(+x.alt_baro || +x.alt_geom || 0),
   Math.round(x.gs || 0), Math.round(x.track || 0), (x.flight || "").trim(), x.t || "", mil || ((x.dbFlags || 0) & 1) ? 1 : 0, x.hex || ""],
   t - (x.seen_pos != null ? x.seen_pos * 1000 : 0), true);
