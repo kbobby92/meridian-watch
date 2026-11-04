@@ -38,6 +38,13 @@ jobs:
       - name: Fetch breaking news
         run: node tools/fetch_news.mjs
         continue-on-error: true
+      - name: Check briefing data
+        run: |
+          # If data.json was published malformed or incomplete, keep serving the last good copy.
+          if ! node -e 'const d=JSON.parse(require("fs").readFileSync("data.json","utf8")); for (const k of ["hotspots","news","timeline","chokepoints","markets","measures"]) if (!Array.isArray(d[k]) || !d[k].length) throw new Error("missing " + k);'; then
+            echo "data.json is invalid; restoring the copy currently live on the site"
+            curl -fsSL "https://kbobby92.github.io/meridian-watch/data.json" -o data.json
+          fi
       - name: Assemble site
         run: |
           mkdir -p _site
