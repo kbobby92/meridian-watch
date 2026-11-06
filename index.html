@@ -391,6 +391,14 @@ a.btn .sw { width: 8px; height: 8px; border-radius: 2px; }
 
 .tip { font: 12px var(--font-sans); background: var(--surface); border: 1px solid var(--border-strong); padding: 7px 9px; border-radius: 3px; color: var(--text); }
 .tip span { color: var(--text-2); }
+.hb { position: relative; width: 0; height: 0; pointer-events: auto; cursor: pointer; }
+.hb b { position: absolute; left: -12px; top: -12px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--c) 70%, #0b0f15); border: 1.5px solid var(--c); color: #fff; font: 600 10.5px/1 var(--font-mono); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 22%, transparent), 0 2px 8px rgba(0,0,0,.55); transition: transform .15s; }
+.hb:hover b { transform: scale(1.15); }
+.hb span { position: absolute; left: 17px; top: -8px; font-size: 11px; font-weight: 600; color: var(--text); white-space: nowrap; text-shadow: 0 0 3px #000, 0 0 6px #000, 0 0 10px #000; }
+.hb.sel b { background: #fff; color: #0b0f15; border-color: #fff; box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 45%, transparent), 0 2px 8px rgba(0,0,0,.55); }
+.hb.brk b { animation: hbp 1.4s ease-in-out infinite; }
+@keyframes hbp { 50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--c) 0%, transparent), 0 2px 8px rgba(0,0,0,.55); } }
+@media (prefers-reduced-motion: reduce) { .hb.brk b { animation: none; } }
 .cp-label { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--choke); cursor: pointer; white-space: nowrap; transform: translate(-4px, -50%); display: flex; align-items: center; gap: 4px; text-shadow: 0 0 3px #000, 0 0 6px #000; pointer-events: auto; }
 .cp-label::before { content: ""; width: 6px; height: 6px; background: var(--dc, var(--choke)); transform: rotate(45deg); }
 
@@ -574,7 +582,12 @@ function initGlobe() {
     .pointLabel(d => { const n = breakingCount(d.id); return `<div class="tip"><b>${esc(d.name)}</b><br><span>Index ${d.score} · ${sevOf(d.score)[0]}${n ? ` · <b style="display:inline;color:var(--crit)">${n} new in the last hour</b>` : ""} · click for dossier</span></div>`; })
     .onPointClick(d => { pointClickAt = Date.now(); openDossier(d.id); })
     .htmlElementsData([]).htmlLat("lat").htmlLng("lng").htmlAltitude(0.01)
-    .htmlElement(d => { if (d.kind === "city") { const c = document.createElement("div"); c.className = "city" + (d.cap ? " cap" : ""); c.innerHTML = `<i></i>${esc(d.name)}`; return c; }
+    .htmlElement(d => {
+      if (d.kind === "hot") { const h = d.h, el = document.createElement("div"); el.className = "hb" + (d.sel ? " sel" : "") + (breakingCount(h.id) ? " brk" : "");
+        el.style.setProperty("--c", sevOf(h.score)[2]); el.title = `${h.name} · index ${h.score} (${sevOf(h.score)[0]}) · click for dossier`;
+        el.innerHTML = `<b>${h.score}</b>${d.label ? `<span>${esc(h.short || h.name)}</span>` : ""}`;
+        el.onclick = e => { e.stopPropagation(); pointClickAt = Date.now(); openDossier(h.id); }; return el; }
+      if (d.kind === "city") { const c = document.createElement("div"); c.className = "city" + (d.cap ? " cap" : ""); c.innerHTML = `<i></i>${esc(d.name)}`; return c; }
       const el = document.createElement("div"); el.className = "cp-label"; el.style.setProperty("--dc", CP_COLOR[d.status] || "var(--choke)"); el.textContent = d.short || d.name; el.title = d.name + " · " + d.status + (d.flowPre != null ? ` · oil now ${d.flowNow}M barrels/day (was ${d.flowPre}M)` : ""); el.onclick = () => showChoke(d.id); return el; })
     .particlesData([]).particlesList(d => d.pts).particleLat("lat").particleLng("lng").particleAltitude("alt")
     .particlesColor(d => d.color).particlesSize(d => d.size).particlesSizeAttenuation(false)
@@ -684,8 +697,8 @@ function landTexture(features, fills) {
 function drawGlobe() {
   if (G) {
     const hs = state.layers.hot ? state.hotspots : [];
-    G.pointsData(hs).ringsData(hs);
-    G.htmlElementsData([...(state.layers.cp ? state.chokepoints : []), ...visibleCities()]);
+    G.pointsData([]).ringsData(hs);
+    drawHtml();
     G.labelsData(state.layers.ev && state.mode === "situation" ? recentEvents() : []);
     drawPolygons(); updateTexture(); drawLegend2();
   }
@@ -970,7 +983,15 @@ const CITIES = [
 let cityTier = -1;
 const cityTierNow = () => { const a = G ? G.pointOfView().altitude : 3; return a < 0.55 ? 2 : a < 1.6 ? 1 : 0; };
 function visibleCities() { cityTier = cityTierNow(); return cityTier === 2 ? CITIES : cityTier === 1 ? CITIES.filter(c => c.cap) : []; }
-function citiesOnZoom() { if (G && cityTierNow() !== cityTier) G.htmlElementsData([...(state.layers.cp ? state.chokepoints : []), ...visibleCities()]); }
+function citiesOnZoom() { if (G && cityTierNow() !== cityTier) drawHtml(); }
+/* Hotspot score badges, chokepoint labels and city names share the globe's HTML layer.
+   Hotspot names show once zoomed in, or for the open hotspot. */
+function drawHtml() {
+  if (!G) return;
+  const cities = visibleCities();
+  const hot = state.layers.hot ? state.hotspots.map(h => ({ kind: "hot", h, lat: h.lat, lng: h.lng, sel: h.id === state.open, label: cityTier >= 1 || h.id === state.open })) : [];
+  G.htmlElementsData([...(state.layers.cp ? state.chokepoints : []), ...cities, ...hot]);
+}
 
 function inspectAt(lat, lng) {
   if (!G) return;
@@ -1279,7 +1300,7 @@ document.querySelectorAll("#cbar button").forEach(b => b.addEventListener("click
 $("viewToggle").onclick = () => setView(isCompact() ? "full" : "compact", true);
 $("layersBtn").onclick = () => { const p = document.querySelector(".main > .panel"); const open = p.classList.toggle("lo"); $("layersBtn").setAttribute("aria-expanded", String(open)); };
 (() => { let v = null; try { v = localStorage.getItem(VIEW_KEY); } catch {} setView(v || (matchMedia("(max-width: 760px)").matches ? "compact" : "full"), false); })();
-function drawGlobeSelection() { if (G) G.pointsData(state.layers.hot ? [...state.hotspots] : []); }
+function drawGlobeSelection() { drawHtml(); }
 $("back").onclick = () => closeDossier(false);
 $("center").onclick = () => { if (state.country) { if (isCompact()) setCTab("globe"); flyTo(state.country.lat, state.country.lng, 1.7); return; } const h = state.hotspots.find(x => x.id === state.open); if (!h) return; if (isCompact()) setCTab("globe"); flyTo(h.lat, h.lng); };
 addEventListener("hashchange", () => { const id = location.hash.slice(1); if (id && id !== state.open) openDossier(id, true); else if (!id) closeDossier(true); });
