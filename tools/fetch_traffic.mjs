@@ -132,11 +132,10 @@ async function aircraft() {
   return map.size ? { source: [...used].join(" + "), ac: [...map.values()] } : null;
 }
 
-const AIS_BOXES = [
-  [[22, 47], [31, 60]], [[10, 32], [30.5, 45]], [[11, 43], [16, 54]], [[30, 25], [37.5, 36.5]], [[40, 26], [47, 42]],
-  [[53, 9], [66, 31]], [[18, 105], [30, 125]], [[-3, 95], [8, 106]], [[-38, 10], [-30, 25]], [[7, -82], [10.5, -77]]
-];
-async function ships(key, seconds = 50) {
+// Whole world: AISStream's coverage comes from shore stations, so ships near coasts and in busy lanes
+// show up best; open ocean stays sparse.
+const AIS_BOXES = [[[-90, -180], [90, 180]]];
+async function ships(key, seconds = 180) {
   if (!key) return null;
   const seen = new Map(); let msgs = 0, other = 0;
   await new Promise(resolve => {
