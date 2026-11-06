@@ -35,6 +35,8 @@ jobs:
         continue-on-error: true
         env:
           AISSTREAM_KEY: ${{ secrets.AISSTREAM_KEY }}
+          OPENSKY_CLIENT_ID: ${{ secrets.OPENSKY_CLIENT_ID }}
+          OPENSKY_CLIENT_SECRET: ${{ secrets.OPENSKY_CLIENT_SECRET }}
       - name: Fetch breaking news
         run: node tools/fetch_news.mjs
         continue-on-error: true

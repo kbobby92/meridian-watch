@@ -48,8 +48,25 @@ const pack = (a, mil) => {
    adsb.lol circles (aircraft en route between hubs). Its free anonymous tier allows about 400 credits a
    day and a worldwide request costs 4, so it is asked on every other scheduled run (~72 a day); the
    runs in between reuse those positions from the previous snapshot if they are under 25 minutes old. */
+// With a free OpenSky account (repo secrets OPENSKY_CLIENT_ID / OPENSKY_CLIENT_SECRET) the allowance
+// rises to 4000 credits a day, enough to ask on every run.
+const OS_ID = process.env.OPENSKY_CLIENT_ID, OS_SECRET = process.env.OPENSKY_CLIENT_SECRET;
+async function openskyToken() {
+  if (!OS_ID || !OS_SECRET) return null;
+  try {
+    const r = await fetch("https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token", {
+      method: "POST", headers: { ...UA, "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ grant_type: "client_credentials", client_id: OS_ID, client_secret: OS_SECRET }),
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!r.ok) { console.log(`OpenSky sign-in: HTTP ${r.status}; using anonymous access`); return null; }
+    return (await r.json()).access_token || null;
+  } catch (e) { console.log("OpenSky sign-in failed:", e.message); return null; }
+}
 async function opensky() {
-  const r = await fetch("https://opensky-network.org/api/states/all", { headers: UA, signal: AbortSignal.timeout(30000) });
+  const token = await openskyToken();
+  console.log(`OpenSky: ${token ? "signed in" : "anonymous"}`);
+  const r = await fetch("https://opensky-network.org/api/states/all", { headers: token ? { ...UA, Authorization: `Bearer ${token}` } : UA, signal: AbortSignal.timeout(30000) });
   console.log(`OpenSky: HTTP ${r.status}, credits left ${r.headers.get("x-rate-limit-remaining") ?? "?"}`);
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const d = await r.json();
@@ -104,7 +121,7 @@ async function aircraft() {
   }
   console.log(`areas: ${ok} ok, ${fail} failed; ${map.size} aircraft from ${[...used].join(" + ")}`);
   // Fill in everything outside the circles from OpenSky (fresh on alternate runs, reused otherwise).
-  const fresh = process.env.GITHUB_EVENT_NAME !== "schedule" || Math.floor(Date.now() / 600000) % 2 === 0;
+  const fresh = (OS_ID && OS_SECRET) || process.env.GITHUB_EVENT_NAME !== "schedule" || Math.floor(Date.now() / 600000) % 2 === 0;
   let os = [];
   if (fresh) { try { os = await opensky(); } catch (e) { console.log("OpenSky failed:", e.message); } }
   if (!os.length) { os = await previousOpenSky(); if (os.length) console.log(`OpenSky: reusing ${os.length} positions from the previous snapshot`); }
