@@ -26,7 +26,7 @@
   --text-3: #6b7a8f;
   --accent: #5b8def;
   --flight: #e0a84a;
-  --ship: #3fc1b0;
+  --ship: #4aa8ff;
   --choke: #a28bf0;
   --mil: #ff5d8f;
   --crit: #e5534b;
@@ -620,7 +620,9 @@ function drawTraffic() {
     const civ = state.flights.filter(f => !f.mil), mil = state.flights.filter(f => f.mil);
     const arrows = drawArrows([...(state.layers.fl ? civ : []), ...(state.layers.mil ? mil : [])]);
     if (!arrows && state.layers.fl && civ.length) sets.push({ pts: civ, color: "#e0a84a", size: 1.6 });
-    if (state.layers.sh && state.ships.length) sets.push({ pts: state.ships, color: "#3fc1b0", size: 2.3 });
+    const selShip = state.inspect && state.inspect.kind === "ship" ? state.inspect.id : null;
+    if (state.layers.sh && state.ships.length) sets.push({ pts: selShip ? state.ships.filter(s => s.id !== selShip) : state.ships, color: "#4aa8ff", size: 2.3 });
+    if (selShip) { const s = state.ships.find(x => x.id === selShip); if (s) sets.push({ pts: [{ ...s, alt: s.alt + 0.003 }], color: SEL_COLOR, size: 7 }); }
     if (!arrows && state.layers.mil && mil.length) sets.push({ pts: mil, color: "#ff5d8f", size: 3.2 });
     G.particlesData(sets);
   }
@@ -647,7 +649,9 @@ function threeKit() {
 }
 /* Vertex colours are read as linear light, so the sRGB brand colours are converted first. */
 const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
-const AC_RGB = { civ: [0xe0, 0xa8, 0x4a].map(lin), mil: [0xff, 0x5d, 0x8f].map(lin) };
+/* The aircraft or vessel picked on the globe is drawn in bright green, larger and slightly raised, so it can be followed. */
+const SEL_COLOR = "#39ff6a";
+const AC_RGB = { civ: [0xe0, 0xa8, 0x4a].map(lin), mil: [0xff, 0x5d, 0x8f].map(lin), sel: [0x39, 0xff, 0x6a].map(lin) };
 function drawArrows(list) {
   if (!G) return false;
   if (!acKit) acKit = threeKit();
@@ -660,17 +664,19 @@ function drawArrows(list) {
   const n = list.length, pos = new Float32Array(n * 18), col = new Float32Array(n * 18);
   const sub = (p, q) => [p.x - q.x, p.y - q.y, p.z - q.z], unit = v => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
   let k = 0;
+  const selHex = state.inspect && state.inspect.kind === "ac" ? state.inspect.hex : null;
   for (const f of list) {
-    const c0 = G.getCoords(f.lat, f.lng, f.alt), p = { x: c0.x, y: c0.y, z: c0.z };
-    const cn = G.getCoords(Math.min(89.9, f.lat + 0.05), f.lng, f.alt), N = unit(sub({ x: cn.x, y: cn.y, z: cn.z }, p));
-    const ce = G.getCoords(f.lat, f.lng + 0.05, f.alt), E = unit(sub({ x: ce.x, y: ce.y, z: ce.z }, p));
+    const isSel = selHex && f.hex === selHex, fa = isSel ? f.alt + 0.004 : f.alt;
+    const c0 = G.getCoords(f.lat, f.lng, fa), p = { x: c0.x, y: c0.y, z: c0.z };
+    const cn = G.getCoords(Math.min(89.9, f.lat + 0.05), f.lng, fa), N = unit(sub({ x: cn.x, y: cn.y, z: cn.z }, p));
+    const ce = G.getCoords(f.lat, f.lng + 0.05, fa), E = unit(sub({ x: ce.x, y: ce.y, z: ce.z }, p));
     const h = (f.trk || 0) * Math.PI / 180, ch = Math.cos(h), sh = Math.sin(h);
-    const L = f.mil ? L0 * 1.5 : L0;
+    const L = isSel ? L0 * 2.4 : f.mil ? L0 * 1.5 : L0;
     const d = [N[0] * ch + E[0] * sh, N[1] * ch + E[1] * sh, N[2] * ch + E[2] * sh];
     const r = [E[0] * ch - N[0] * sh, E[1] * ch - N[1] * sh, E[2] * ch - N[2] * sh];
     const pt = (fd, fr) => [p.x + d[0] * fd * L + r[0] * fr * L, p.y + d[1] * fd * L + r[1] * fr * L, p.z + d[2] * fd * L + r[2] * fr * L];
     const tip = pt(1, 0), bl = pt(-0.75, -0.6), br = pt(-0.75, 0.6), notch = pt(-0.3, 0);
-    const c = f.mil ? AC_RGB.mil : AC_RGB.civ;
+    const c = isSel ? AC_RGB.sel : f.mil ? AC_RGB.mil : AC_RGB.civ;
     for (const v of [tip, bl, notch, tip, notch, br]) { pos.set(v, k); col.set(c, k); k += 3; }
   }
   if (!acMesh) {
@@ -704,7 +710,8 @@ function inspectAt(lat, lng) {
   showInspect(best);
 }
 function showInspect(p) {
-  state.inspect = p; const box = $("inspect");
+  const prev = state.inspect; state.inspect = p; const box = $("inspect");
+  if (!prev || prev.kind !== p.kind || (prev.hex || prev.id) !== (p.hex || p.id)) setTimeout(drawTraffic, 0);
   const pos = `${Math.abs(p.lat).toFixed(2)}°${p.lat >= 0 ? "N" : "S"} ${Math.abs(p.lng).toFixed(2)}°${p.lng >= 0 ? "E" : "W"}`;
   box.innerHTML = p.kind === "ship"
     ? `<button class="x" aria-label="Close">×</button><div class="label">Vessel</div><b>${esc(p.name || "MMSI " + p.id)}</b>
@@ -718,7 +725,7 @@ function showInspect(p) {
   box.hidden = false;
   box.querySelector(".x").onclick = closeInspect;
 }
-function closeInspect() { state.inspect = null; $("inspect").hidden = true; }
+function closeInspect() { const had = !!state.inspect; state.inspect = null; $("inspect").hidden = true; if (had) drawTraffic(); }
 function flyTo(lat, lng, alt) { if (G) { G.controls().autoRotate = false; G.pointOfView({ lat, lng, altitude: alt || 1.45 }, reduced ? 0 : 1100); } }
 ["hot","cp","fl","mil","sh"].forEach(k => $("l-" + k).addEventListener("click", e => { state.layers[k] = !state.layers[k]; e.currentTarget.setAttribute("aria-pressed", state.layers[k]); drawGlobe(); }));
 
