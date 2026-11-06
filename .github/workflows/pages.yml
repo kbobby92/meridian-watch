@@ -37,6 +37,9 @@ jobs:
           AISSTREAM_KEY: ${{ secrets.AISSTREAM_KEY }}
           OPENSKY_CLIENT_ID: ${{ secrets.OPENSKY_CLIENT_ID }}
           OPENSKY_CLIENT_SECRET: ${{ secrets.OPENSKY_CLIENT_SECRET }}
+      - name: Fetch areas of control
+        run: node tools/fetch_control.mjs
+        continue-on-error: true
       - name: Fetch breaking news
         run: node tools/fetch_news.mjs
         continue-on-error: true
@@ -50,8 +53,8 @@ jobs:
       - name: Assemble site
         run: |
           mkdir -p _site
-          cp index.html data.json README.md .nojekyll _site/
-          for f in aircraft.json ships.json breaking.json; do [ -f "$f" ] && cp "$f" _site/ || true; done
+          cp index.html data.json areas.json README.md .nojekyll _site/
+          for f in aircraft.json ships.json breaking.json control_ua.json; do [ -f "$f" ] && cp "$f" _site/ || true; done
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

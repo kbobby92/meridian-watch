@@ -103,6 +103,20 @@ button, select { font: inherit; color: inherit; }
 .inspect .kv .mono { color: var(--text); text-align: right; }
 .inspect a { display: inline-block; margin-top: 8px; font-size: 12px; }
 .inspect .x { position: absolute; top: 4px; right: 6px; background: none; border: 0; color: var(--text-3); font-size: 18px; cursor: pointer; padding: 2px 6px; }
+.modes { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 4px; overflow: hidden; }
+.modes button { height: 26px; padding: 0 11px; background: transparent; border: 0; color: var(--text-3); font-size: 11.5px; cursor: pointer; }
+.modes button + button { border-left: 1px solid var(--border-strong); }
+.modes button[aria-pressed="true"] { background: var(--surface-3); color: var(--text); }
+html.mode-situation #traffic-msg, html.mode-situation .tg[data-mode="traffic"], html.mode-traffic .tg[data-mode="situation"] { display: none !important; }
+.city { font-size: 10px; color: var(--text-2); white-space: nowrap; transform: translate(-3px, -50%); display: flex; align-items: center; gap: 4px; text-shadow: 0 0 3px #000, 0 0 6px #000; pointer-events: none; }
+.city i { width: 4px; height: 4px; border-radius: 50%; background: var(--text-2); }
+.city.cap { color: var(--text); font-weight: 600; }
+.city.cap i { width: 5px; height: 5px; border-radius: 1px; background: var(--text); }
+.legend2 { position: absolute; right: 12px; bottom: 10px; display: flex; flex-direction: column; gap: 3px; font-size: 10.5px; color: var(--text-3); pointer-events: none; text-align: right; }
+.legend2 span { display: inline-flex; align-items: center; justify-content: flex-end; gap: 5px; }
+.legend2 i { width: 10px; height: 7px; border-radius: 1px; }
+.mode-traffic .legend2 { display: none; }
+.compact .legend2 { display: none; }
 .legend { position: absolute; left: 12px; bottom: 10px; display: flex; gap: 12px; flex-wrap: wrap; font-size: 10.5px; color: var(--text-3); pointer-events: none; }
 .legend span { display: inline-flex; align-items: center; gap: 5px; }
 .legend i { width: 7px; height: 7px; border-radius: 50%; }
@@ -230,6 +244,8 @@ a.btn .sw { width: 8px; height: 8px; border-radius: 2px; }
 .compact .phead h2 { display: none; }
 .compact .layers-btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 11px; border: 1px solid var(--border-strong); border-radius: 16px; background: color-mix(in srgb, var(--surface) 92%, transparent); font-size: 12.5px; color: var(--text); cursor: pointer; }
 .compact .phead .toggles { display: none; }
+.compact .modes { background: var(--surface); }
+.compact .modes button { height: 32px; font-size: 12.5px; }
 .compact .lo .phead .toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 10px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.45); }
 .compact .lo .phead .tg { height: 34px; }
 .compact .toolbar { display: none; }
@@ -437,18 +453,21 @@ a.btn .sw { width: 8px; height: 8px; border-radius: 2px; }
       <div class="phead">
         <h2>Global picture</h2>
         <button class="layers-btn" id="layersBtn" type="button" aria-expanded="false"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1.5 13 4.5 7 7.5 1 4.5Z M1 7 7 10 13 7 M1 9.5 7 12.5 13 9.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>Layers</button>
+        <div class="modes" role="group" aria-label="Map mode"><button type="button" data-mode="situation">Situation</button><button type="button" data-mode="traffic" data-site>Traffic</button></div>
         <div class="toggles" role="group" aria-label="Map layers">
           <button class="tg" id="l-hot" aria-pressed="true"><span class="sw" style="background:var(--crit)"></span>Hotspots <span class="n" id="n-hot">0</span></button>
           <button class="tg" id="l-cp" aria-pressed="true"><span class="sw" style="background:var(--choke)"></span>Chokepoints <span class="n" id="n-cp">0</span></button>
-          <button class="tg" id="l-ev" aria-pressed="true" title="Located events from the twice-daily briefing, last 7 days"><span class="sw" style="background:#ff7a45"></span>Events <span class="n" id="n-ev">0</span></button>
-          <button class="tg" id="l-fl" aria-pressed="true" data-site><span class="sw" style="background:var(--flight)"></span>Aircraft <span class="n" id="n-fl">0</span></button>
-          <button class="tg" id="l-mil" aria-pressed="true" data-site><span class="sw" style="background:var(--mil)"></span>Military <span class="n" id="n-mil">0</span></button>
-          <button class="tg" id="l-sh" aria-pressed="true" data-site><span class="sw" style="background:var(--ship)"></span>Vessels <span class="n" id="n-sh">0</span></button>
+          <button class="tg" id="l-ctl" aria-pressed="true" data-mode="situation" title="Areas of control: Ukraine daily from DeepState; others approximate"><span class="sw" style="background:#e5534b;opacity:.6"></span>Control <span class="n" id="n-ctl">0</span></button>
+          <button class="tg" id="l-ev" aria-pressed="true" data-mode="situation" title="Located events from the twice-daily briefing, last 7 days"><span class="sw" style="background:#ff7a45"></span>Events <span class="n" id="n-ev">0</span></button>
+          <button class="tg" id="l-fl" aria-pressed="true" data-site data-mode="traffic"><span class="sw" style="background:var(--flight)"></span>Aircraft <span class="n" id="n-fl">0</span></button>
+          <button class="tg" id="l-mil" aria-pressed="true" data-site data-mode="traffic"><span class="sw" style="background:var(--mil)"></span>Military <span class="n" id="n-mil">0</span></button>
+          <button class="tg" id="l-sh" aria-pressed="true" data-site data-mode="traffic"><span class="sw" style="background:var(--ship)"></span>Vessels <span class="n" id="n-sh">0</span></button>
         </div>
       </div>
       <div class="stage">
         <div id="globe"></div>
         <div class="inspect" id="inspect" hidden></div>
+        <div class="legend2" id="legend2" aria-hidden="true"></div>
         <div class="legend" aria-hidden="true">
           <span><i style="background:var(--crit)"></i>Critical 80+</span><span><i style="background:var(--high)"></i>High 65+</span><span><i style="background:var(--elev)"></i>Elevated 45+</span><span><i style="background:var(--watch)"></i>Watch</span>
         </div>
@@ -512,7 +531,7 @@ const SEV = [["Critical","var(--crit)","#e5534b",80],["High","var(--high)","#e88
 const sevOf = s => SEV.find(x => (s || 0) >= x[3]);
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const state = { hotspots: [], news: [], timeline: [], chokepoints: [], markets: [], measures: [], meta: null, flights: [], ships: [], layers: { hot: true, cp: true, ev: true, fl: true, mil: true, sh: true }, events: [], history: [], country: null, newsFilter: "All", tlFilter: null, open: null, live: {} };
+const state = { hotspots: [], news: [], timeline: [], chokepoints: [], markets: [], measures: [], meta: null, flights: [], ships: [], layers: { hot: true, cp: true, ctl: true, ev: true, fl: true, mil: true, sh: true }, mode: "situation", areas: [], uaControl: null, events: [], history: [], country: null, newsFilter: "All", tlFilter: null, open: null, live: {} };
 
 /* ---------- formatting ---------- */
 function fmtDate(iso, withTime) {
@@ -555,7 +574,8 @@ function initGlobe() {
     .pointLabel(d => { const n = breakingCount(d.id); return `<div class="tip"><b>${esc(d.name)}</b><br><span>Index ${d.score} · ${sevOf(d.score)[0]}${n ? ` · <b style="display:inline;color:var(--crit)">${n} new in the last hour</b>` : ""} · click for dossier</span></div>`; })
     .onPointClick(d => { pointClickAt = Date.now(); openDossier(d.id); })
     .htmlElementsData([]).htmlLat("lat").htmlLng("lng").htmlAltitude(0.01)
-    .htmlElement(d => { const el = document.createElement("div"); el.className = "cp-label"; el.style.setProperty("--dc", CP_COLOR[d.status] || "var(--choke)"); el.textContent = d.short || d.name; el.title = d.name + " · " + d.status + (d.flowPre != null ? ` · oil now ${d.flowNow}M barrels/day (was ${d.flowPre}M)` : ""); el.onclick = () => showChoke(d.id); return el; })
+    .htmlElement(d => { if (d.kind === "city") { const c = document.createElement("div"); c.className = "city" + (d.cap ? " cap" : ""); c.innerHTML = `<i></i>${esc(d.name)}`; return c; }
+      const el = document.createElement("div"); el.className = "cp-label"; el.style.setProperty("--dc", CP_COLOR[d.status] || "var(--choke)"); el.textContent = d.short || d.name; el.title = d.name + " · " + d.status + (d.flowPre != null ? ` · oil now ${d.flowNow}M barrels/day (was ${d.flowPre}M)` : ""); el.onclick = () => showChoke(d.id); return el; })
     .particlesData([]).particlesList(d => d.pts).particleLat("lat").particleLng("lng").particleAltitude("alt")
     .particlesColor(d => d.color).particlesSize(d => d.size).particlesSizeAttenuation(false)
     /* No hover labels on traffic: hit-testing thousands of particles on every mouse move froze the globe.
@@ -569,7 +589,8 @@ function initGlobe() {
     .labelLabel(d => `<div class="tip"><b>${esc(d.title)}</b><br><span>${esc(d.type)} · ${esc(d.place || d.country || "")} · ${d.ts ? ago(Date.parse(d.ts)) : ""}</span></div>`)
     .onLabelClick(d => { pointClickAt = Date.now(); showEvent(d); })
     /* Selected country: one outline, kept out of pointer hit-testing. */
-    .polygonsData([]).polygonCapColor(() => "rgba(91,141,239,0.13)").polygonSideColor(() => "rgba(0,0,0,0)").polygonStrokeColor(() => "#5b8def").polygonAltitude(0.004)
+    .polygonsData([]).polygonCapColor(d => d.__sel ? "rgba(91,141,239,0.13)" : d.color + "6b").polygonSideColor(() => "rgba(0,0,0,0)")
+    .polygonStrokeColor(d => d.__sel ? "#5b8def" : d.color).polygonAltitude(d => d.__sel ? 0.005 : 0.0035).polygonCapCurvatureResolution(3)
     .particleLabel(() => "")
     .pointerEventsFilter(obj => !(obj && (obj.__globeObjType === "particles" || obj.__globeObjType === "polygon")));
   try { G.renderer().setPixelRatio(Math.min(window.devicePixelRatio || 1, matchMedia("(pointer: coarse)").matches ? 1.25 : 1.5)); } catch {}
@@ -577,6 +598,7 @@ function initGlobe() {
   G.pointOfView({ lat: 28, lng: 40, altitude: 2.35 }, 0);
   const ctr = G.controls(); ctr.autoRotate = !reduced; ctr.autoRotateSpeed = 0.22;
   ctr.addEventListener("change", arrowsOnZoom);
+  ctr.addEventListener("change", citiesOnZoom);
   ctr.addEventListener("change", () => { if (!vlPending) { vlPending = true; setTimeout(() => { vlPending = false; viewLinks(); }, 250); } });
   $("globe").addEventListener("pointerdown", () => { ctr.autoRotate = false; }, { once: true });
   /* Clicks are resolved here rather than through the library's click events, which swallow clicks
@@ -597,19 +619,42 @@ function initGlobe() {
       closeInspect(); $("inspect").hidden = true;
       /* Clicking open land (not a plane, ship, hotspot or event) opens that country's profile,
          unless the click was just to dismiss a card. */
-      if (!hadCard) { const f = countryAt(c.lat, c.lng); if (f) openCountry(f, c.lat, c.lng); }
+      if (hadCard) return;
+      const a = state.mode === "situation" && state.layers.ctl ? areaAt(c.lat, c.lng) : null;
+      if (a) { showArea(a); return; }
+      const f = countryAt(c.lat, c.lng); if (f) openCountry(f, c.lat, c.lng);
     }, 60);
   });
   new ResizeObserver(() => { const r = $("globe").getBoundingClientRect(); G.width(r.width).height(r.height); }).observe($("globe"));
 }
-function landTexture(features) {
+/* Countries tied to a tracked hotspot are tinted by that hotspot's severity (the highest one wins). */
+const RISK_FILL = { crit: "rgba(229,83,75,0.24)", high: "rgba(232,131,58,0.19)", elev: "rgba(217,178,63,0.14)", watch: "rgba(106,167,122,0.10)" };
+/* Only the countries where each conflict is fought are tinted (not every party to it). */
+const RISK_COUNTRIES = { iran: "364", ukraine: "804", levant: "376 422 275", yemen: "887", sudan: "729", drc: "180", taiwan: "158", korea: "408 410", venezuela: "862", iraq: "368 760", horn: "706 232" };
+function riskFills() {
+  const best = {};
+  for (const h of state.hotspots) for (const c of (RISK_COUNTRIES[h.id] || "").split(" ")) if (c && (best[c] == null || h.score > best[c])) best[c] = h.score;
+  const out = {};
+  for (const [c, s] of Object.entries(best)) out[c] = s >= 80 ? RISK_FILL.crit : s >= 65 ? RISK_FILL.high : s >= 45 ? RISK_FILL.elev : RISK_FILL.watch;
+  return out;
+}
+let texKey = null;
+function updateTexture() {
+  if (!G || !LAND.length) return;
+  const fills = state.mode === "situation" ? riskFills() : {};
+  const key = JSON.stringify(fills);
+  if (key === texKey) return;
+  texKey = key; G.globeImageUrl(landTexture(LAND, fills));
+}
+function landTexture(features, fills) {
+  fills = fills || {};
   const small = matchMedia("(pointer: coarse)").matches || innerWidth < 760;
   const W = small ? 2048 : 4096, H = W / 2, c = document.createElement("canvas"); c.width = W; c.height = H;
   const x = c.getContext("2d");
   x.fillStyle = "#0d1724"; x.fillRect(0, 0, W, H);
   const step = small ? 5 : 9, pat = document.createElement("canvas"); pat.width = pat.height = step;
   const px = pat.getContext("2d"); px.fillStyle = "rgba(140,165,200,0.62)"; px.beginPath(); px.arc(step / 2, step / 2, small ? 1 : 1.7, 0, Math.PI * 2); px.fill();
-  const path = new Path2D();
+  let path = new Path2D();
   const ring = coords => {
     let prev = null, off = 0; const pts = [];
     for (const [lng, lat] of coords) {
@@ -621,12 +666,17 @@ function landTexture(features) {
       path.closePath();
     }
   };
+  const tinted = [];
   for (const f of features) {
     const g = f.geometry; if (!g) continue;
     const polys = g.type === "Polygon" ? [g.coordinates] : g.type === "MultiPolygon" ? g.coordinates : [];
+    const fill = fills[String(f.id || "").padStart(3, "0")];
+    const before = path;
+    if (fill) { const own = new Path2D(); const save = path; path = own; for (const poly of polys) for (const r of poly) ring(r); path = save; tinted.push([own, fill]); }
     for (const poly of polys) for (const r of poly) ring(r);
   }
   x.fillStyle = "rgba(120,145,180,0.07)"; x.fill(path, "evenodd");
+  for (const [p, c] of tinted) { x.fillStyle = c; x.fill(p, "evenodd"); }
   x.fillStyle = x.createPattern(pat, "repeat"); x.fill(path, "evenodd");
   x.strokeStyle = "rgba(110,140,180,0.32)"; x.lineWidth = 1.3; x.stroke(path);
   return c.toDataURL("image/png");
@@ -635,9 +685,11 @@ function drawGlobe() {
   if (G) {
     const hs = state.layers.hot ? state.hotspots : [];
     G.pointsData(hs).ringsData(hs);
-    G.htmlElementsData(state.layers.cp ? state.chokepoints : []);
-    G.labelsData(state.layers.ev ? recentEvents() : []);
+    G.htmlElementsData([...(state.layers.cp ? state.chokepoints : []), ...visibleCities()]);
+    G.labelsData(state.layers.ev && state.mode === "situation" ? recentEvents() : []);
+    drawPolygons(); updateTexture(); drawLegend2();
   }
+  if ($("n-ctl")) $("n-ctl").textContent = controlAreas().length;
   if ($("n-ev")) $("n-ev").textContent = recentEvents().length;
   drawTraffic();
   $("n-hot").textContent = state.hotspots.length; $("n-cp").textContent = state.chokepoints.length;
@@ -645,12 +697,13 @@ function drawGlobe() {
 function drawTraffic() {
   if (G) {
     const sets = [];
-    const civ = state.flights.filter(f => !f.mil), mil = state.flights.filter(f => f.mil);
+    const tm = state.mode === "traffic";
+    const civ = tm ? state.flights.filter(f => !f.mil) : [], mil = tm ? state.flights.filter(f => f.mil) : [];
     const arrows = drawArrows([...(state.layers.fl ? civ : []), ...(state.layers.mil ? mil : [])]);
     if (!arrows && state.layers.fl && civ.length) sets.push({ pts: civ, color: "#e0a84a", size: 1.6 });
     const selShip = state.inspect && state.inspect.kind === "ship" ? state.inspect.id : null;
-    if (state.layers.sh && state.ships.length) sets.push({ pts: selShip ? state.ships.filter(s => s.id !== selShip) : state.ships, color: "#4aa8ff", size: 2.3 });
-    if (selShip) { const s = state.ships.find(x => x.id === selShip); if (s) sets.push({ pts: [{ ...s, alt: s.alt + 0.003 }], color: SEL_COLOR, size: 7 }); }
+    if (tm && state.layers.sh && state.ships.length) sets.push({ pts: selShip ? state.ships.filter(s => s.id !== selShip) : state.ships, color: "#4aa8ff", size: 2.3 });
+    if (tm && selShip) { const s = state.ships.find(x => x.id === selShip); if (s) sets.push({ pts: [{ ...s, alt: s.alt + 0.003 }], color: SEL_COLOR, size: 7 }); }
     if (!arrows && state.layers.mil && mil.length) sets.push({ pts: mil, color: "#ff5d8f", size: 3.2 });
     G.particlesData(sets);
   }
@@ -802,7 +855,7 @@ function openCountry(f, lat, lng) {
   const code = String(f.id || "").padStart(3, "0");
   state.open = null; state.country = { code, name: f.properties?.name || "Country", lat, lng, f };
   $("overview").style.display = "none"; $("dossier").hidden = false;
-  if (G) G.polygonsData([f]);
+  drawPolygons();
   renderCountry(); $("d-body").scrollTop = 0;
   loadCountryInfo(code); loadLeaders(code);
   if (isCompact()) document.documentElement.classList.add("dossier-open");
@@ -848,11 +901,83 @@ function renderCountry() {
   bindHotChips($("d-body"));
 }
 
+/* ---------- map modes, areas of control, cities ---------- */
+const MODE_KEY = "meridian-mode";
+function setMode(m, save) {
+  state.mode = m === "traffic" && BUILD === "site" ? "traffic" : "situation";
+  const root = document.documentElement;
+  root.classList.toggle("mode-traffic", state.mode === "traffic"); root.classList.toggle("mode-situation", state.mode === "situation");
+  document.querySelectorAll(".modes button").forEach(b => b.setAttribute("aria-pressed", b.dataset.mode === state.mode));
+  if (save) { try { localStorage.setItem(MODE_KEY, state.mode); } catch {} }
+  if (state.mode !== "traffic") closeInspect();
+  drawGlobe();
+}
+document.querySelectorAll(".modes button").forEach(b => b.addEventListener("click", () => setMode(b.dataset.mode, true)));
+function controlAreas() {
+  const out = [];
+  if (state.uaControl && state.uaControl.geometry) out.push(state.uaControl);
+  return out.concat(state.areas || []);
+}
+function drawPolygons() {
+  if (!G) return;
+  const list = state.mode === "situation" && state.layers.ctl ? [...controlAreas()] : [];
+  if (state.country) list.push({ __sel: true, geometry: state.country.f.geometry });
+  G.polygonsData(list);
+}
+function areaAt(lat, lng) {
+  for (const a of controlAreas()) {
+    const g = a.geometry; if (!g) continue;
+    const polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
+    for (const p of polys) if (inRing(lng, lat, p[0]) && !p.slice(1).some(h => inRing(lng, lat, h))) return a;
+  }
+  return null;
+}
+function showArea(a) {
+  closeInspect(); const box = $("inspect");
+  box.innerHTML = `<button class="x" aria-label="Close">×</button><div class="label" style="color:${a.color}">${esc(a.conflict)} · area of control</div><b>${esc(a.name)}</b>
+    <div class="kv"><span>Held by</span><span class="mono">${esc(a.side)}</span><span>As of</span><span class="mono">${esc(a.asOf || "—")}</span></div>
+    ${a.note ? `<p class="foot" style="margin:6px 0 0">${esc(a.note)}</p>` : ""}
+    <p class="foot" style="margin:4px 0 0">${a.approximate ? "Approximate outline drawn from reporting; not a precise front line." : "Daily assessment."}</p>
+    ${a.url ? `<a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.source || "Source")} ↗</a>` : ""}`;
+  box.hidden = false; box.querySelector(".x").onclick = () => { box.hidden = true; };
+}
+function drawLegend2() {
+  const el = $("legend2"); if (!el) return;
+  const seen = new Map();
+  if (state.layers.ctl) for (const a of controlAreas()) { const k = a.legend || a.side; if (!seen.has(k)) seen.set(k, a.color); }
+  el.innerHTML = [...seen].map(([k, c]) => `<span>${esc(k)}<i style="background:${c};opacity:.7"></i></span>`).join("") + (state.mode === "situation" ? '<span>Country tint = hotspot risk<i style="background:rgba(229,83,75,.5)"></i></span>' : "");
+}
+async function loadControl() {
+  try { state.areas = (await getJSON("areas.json?t=" + Date.now(), 20000)) || []; } catch {}
+  try {
+    const d = await getJSON("control_ua.json?t=" + Date.now(), 20000);
+    if (d && d.geometry) state.uaControl = { id: "ua-occupied", name: "Russian-occupied territory", conflict: "Russia–Ukraine", side: "Russia", legend: "Russian-occupied (daily)", color: "#ff4b42",
+      asOf: d.date || (d.at || "").slice(0, 10), note: "Includes Crimea and areas occupied since 2014. Daily assessment by DeepState, a Ukrainian open-source mapping group.", source: "DeepState via deepstate-map-data", url: "https://deepstatemap.live", geometry: d.geometry };
+  } catch {}
+  drawGlobe();
+}
+/* Cities: capitals and places that matter to the tracked conflicts, shown once zoomed in. */
+const CITIES = [
+  ["Kyiv",50.45,30.52,1],["Kharkiv",49.99,36.23],["Odesa",46.48,30.72],["Dnipro",48.46,35.05],["Zaporizhzhia",47.84,35.14],["Donetsk",48.0,37.8],["Kherson",46.64,32.62],["Pokrovsk",48.28,37.18],["Sevastopol",44.62,33.52],
+  ["Moscow",55.76,37.62,1],["St Petersburg",59.93,30.34],["Minsk",53.9,27.56,1],["Warsaw",52.23,21.01,1],["Vilnius",54.69,25.28,1],["Riga",56.95,24.11,1],["Tallinn",59.44,24.75,1],["Helsinki",60.17,24.94,1],["Kaliningrad",54.71,20.51],["Berlin",52.52,13.4,1],["London",51.51,-0.13,1],["Paris",48.86,2.35,1],["Brussels",50.85,4.35,1],["Ankara",39.93,32.86,1],["Istanbul",41.01,28.98],
+  ["Tehran",35.69,51.39,1],["Isfahan",32.65,51.67],["Bandar Abbas",27.18,56.27],["Bushehr",28.97,50.84],["Baghdad",33.31,44.37,1],["Erbil",36.19,44.01],["Basra",30.51,47.81],["Damascus",33.51,36.29,1],["Aleppo",36.2,37.13],["Beirut",33.89,35.5,1],["Tyre",33.27,35.2],["Jerusalem",31.77,35.21,1],["Tel Aviv",32.09,34.78],["Gaza City",31.5,34.47],["Amman",31.95,35.93,1],["Riyadh",24.71,46.68,1],["Jeddah",21.49,39.19],["Doha",25.29,51.53,1],["Abu Dhabi",24.45,54.38,1],["Dubai",25.2,55.27],["Muscat",23.59,58.41,1],["Kuwait City",29.38,47.99,1],["Manama",26.23,50.59,1],
+  ["Sanaa",15.37,44.19,1],["Aden",12.79,45.03],["Hodeidah",14.8,42.95],["Marib",15.46,45.32],["Cairo",30.04,31.24,1],["Port Said",31.26,32.3],
+  ["Khartoum",15.5,32.56,1],["Port Sudan",19.62,37.22],["El Fasher",13.63,25.35],["El Obeid",13.18,30.22],["Nyala",12.05,24.88],["Addis Ababa",9.03,38.74,1],["Asmara",15.32,38.93,1],["Mogadishu",2.05,45.32,1],["Hargeisa",9.56,44.07],["Djibouti",11.59,43.15,1],
+  ["Kinshasa",-4.32,15.31,1],["Goma",-1.68,29.22],["Bukavu",-2.51,28.86],["Uvira",-3.4,29.14],["Kigali",-1.95,30.06,1],["Kampala",0.35,32.58,1],
+  ["Beijing",39.9,116.4,1],["Shanghai",31.23,121.47],["Taipei",25.03,121.57,1],["Kaohsiung",22.63,120.3],["Manila",14.6,120.98,1],["Hanoi",21.03,105.85,1],["Pyongyang",39.04,125.76,1],["Seoul",37.57,126.98,1],["Tokyo",35.68,139.69,1],["New Delhi",28.61,77.21,1],["Islamabad",33.68,73.05,1],["Kabul",34.53,69.17,1],
+  ["Caracas",10.49,-66.88,1],["Bogotá",4.71,-74.07,1],["Havana",23.11,-82.37,1],["Washington",38.9,-77.04,1],["Brasília",-15.79,-47.88,1]
+].map(([name, lat, lng, cap]) => ({ kind: "city", name, lat, lng, cap: !!cap }));
+let cityTier = -1;
+const cityTierNow = () => { const a = G ? G.pointOfView().altitude : 3; return a < 0.55 ? 2 : a < 1.6 ? 1 : 0; };
+function visibleCities() { cityTier = cityTierNow(); return cityTier === 2 ? CITIES : cityTier === 1 ? CITIES.filter(c => c.cap) : []; }
+function citiesOnZoom() { if (G && cityTierNow() !== cityTier) G.htmlElementsData([...(state.layers.cp ? state.chokepoints : []), ...visibleCities()]); }
+
 function inspectAt(lat, lng) {
   if (!G) return;
   const lim = Math.max(0.35, G.pointOfView().altitude * 1.1);
   let best = null, bd = Infinity;
   const pools = [];
+  if (state.mode !== "traffic") return false;
   if (state.layers.fl || state.layers.mil) pools.push(...state.flights.filter(f => f.mil ? state.layers.mil : state.layers.fl));
   if (state.layers.sh) pools.push(...state.ships);
   const cl = Math.cos(lat * Math.PI / 180);
@@ -878,7 +1003,7 @@ function showInspect(p) {
 }
 function closeInspect() { const had = !!state.inspect; state.inspect = null; $("inspect").hidden = true; if (had) drawTraffic(); }
 function flyTo(lat, lng, alt) { if (G) { G.controls().autoRotate = false; G.pointOfView({ lat, lng, altitude: alt || 1.45 }, reduced ? 0 : 1100); } }
-["hot","cp","ev","fl","mil","sh"].forEach(k => $("l-" + k).addEventListener("click", e => { state.layers[k] = !state.layers[k]; e.currentTarget.setAttribute("aria-pressed", state.layers[k]); drawGlobe(); }));
+["hot","cp","ctl","ev","fl","mil","sh"].forEach(k => $("l-" + k).addEventListener("click", e => { state.layers[k] = !state.layers[k]; e.currentTarget.setAttribute("aria-pressed", state.layers[k]); drawGlobe(); }));
 
 /* ---------- KPIs ---------- */
 function renderKpis() {
@@ -1112,7 +1237,7 @@ function renderDossier() {
 }
 function openDossier(id, fromHash) {
   const h = state.hotspots.find(x => x.id === id); if (!h) return;
-  if (state.country) { state.country = null; if (G) G.polygonsData([]); }
+  if (state.country) { state.country = null; drawPolygons(); }
   state.open = id;
   $("overview").style.display = "none"; $("dossier").hidden = false;
   renderDossier(); $("d-body").scrollTop = 0;
@@ -1123,7 +1248,7 @@ function openDossier(id, fromHash) {
 }
 function closeDossier(silent) {
   if (!state.open && !state.country) return;
-  if (state.country) { state.country = null; if (G) G.polygonsData([]); }
+  if (state.country) { state.country = null; drawPolygons(); }
   state.open = null; $("dossier").hidden = true; $("overview").style.display = "flex";
   document.documentElement.classList.remove("dossier-open");
   try { history.replaceState(null, "", location.pathname + location.search); } catch {}
@@ -1311,6 +1436,7 @@ async function startSiteData() {
     } catch (e) { setFeed("f-brief", "warn", "Briefing · unavailable"); }
   };
   await load();
+  loadControl(); setInterval(() => { if (!document.hidden) loadControl(); }, 60 * 60000);
   setInterval(() => { if (!document.hidden) load(); }, 10 * 60000);
 }
 
@@ -1429,7 +1555,7 @@ async function liveLoop() {
   const base = RELAY.replace(/\/+$/, "");
   let worldNext = 0;
   for (;;) {
-    if (!document.hidden && G && (state.layers.fl || state.layers.mil)) {
+    if (!document.hidden && G && state.mode === "traffic" && (state.layers.fl || state.layers.mil)) {
       const now = Date.now(), centers = livePoints();
       const asks = [getJSON(`${base}/mil`, 15000), ...centers.map(([la, lo]) => getJSON(`${base}/point/${la.toFixed(1)}/${lo.toFixed(1)}/${LIVE_NM}`, 15000))];
       const sp = SWEEP ? sweepPoints() : [], sweepNow = [];
@@ -1491,6 +1617,7 @@ async function startBriefing() {
 }
 
 initGlobe();
+setMode((() => { try { return localStorage.getItem(MODE_KEY); } catch { return null; } })() || "situation");
 renderAll();
 viewLinks();
 startBriefing();
