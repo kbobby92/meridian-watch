@@ -138,21 +138,28 @@ const AIS_BOXES = [
 ];
 async function ships(key, seconds = 50) {
   if (!key) return null;
-  const seen = new Map();
+  const seen = new Map(); let msgs = 0, other = 0;
   await new Promise(resolve => {
     const ws = new WebSocket("wss://stream.aisstream.io/v0/stream");
     const stop = setTimeout(() => { try { ws.close(); } catch {} resolve(); }, seconds * 1000);
-    ws.onopen = () => ws.send(JSON.stringify({ APIKey: key, BoundingBoxes: AIS_BOXES, FilterMessageTypes: ["PositionReport"] }));
-    ws.onmessage = ev => {
-      let m; try { m = JSON.parse(typeof ev.data === "string" ? ev.data : Buffer.from(ev.data).toString()); } catch { return; }
-      if (m.error) { console.log("AISStream:", m.error); clearTimeout(stop); try { ws.close(); } catch {} resolve(); return; }
-      const md = m.MetaData; if (!md || md.latitude == null) return;
+    ws.onopen = () => {
+      console.log("AISStream: connected, subscribing");
+      ws.send(JSON.stringify({ APIKey: key.trim(), BoundingBoxes: AIS_BOXES, FilterMessageTypes: ["PositionReport"] }));
+    };
+    ws.onmessage = async ev => {
+      msgs++;
+      let raw = ev.data;
+      if (typeof raw !== "string") raw = raw instanceof Blob ? await raw.text() : Buffer.from(raw).toString();
+      let m; try { m = JSON.parse(raw); } catch { if (msgs <= 2) console.log("AISStream: unreadable message", String(raw).slice(0, 120)); return; }
+      if (m.error) { console.log("AISStream error:", m.error); clearTimeout(stop); try { ws.close(); } catch {} resolve(); return; }
+      const md = m.MetaData; if (!md || md.latitude == null) { if (other++ < 2) console.log("AISStream: other message", raw.slice(0, 160)); return; }
       const pr = (m.Message || {}).PositionReport || {};
       seen.set(String(md.MMSI), [+md.latitude.toFixed(3), +md.longitude.toFixed(3), pr.Sog ?? null, (md.ShipName || "").trim(), String(md.MMSI)]);
     };
-    ws.onerror = e => console.log("AISStream socket error", e.message || "");
+    ws.onerror = e => console.log("AISStream socket error:", e.message || e.type || "");
+    ws.onclose = e => console.log(`AISStream: closed (code ${e.code}${e.reason ? ", " + e.reason : ""})`);
   });
-  console.log(`AISStream: ${seen.size} vessels`);
+  console.log(`AISStream: ${msgs} messages, ${seen.size} vessels`);
   return seen.size ? { source: "AISStream", ships: [...seen.values()] } : null;
 }
 
