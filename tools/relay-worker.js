@@ -64,17 +64,25 @@ function withCors(res, cors) {
 
 const UA = { "User-Agent": "meridian-watch relay (github.com/kbobby92/meridian-watch)" };
 let token = null, tokenExp = 0;
+// Returns { token } or { error } with a plain description of what went wrong (never the secret itself).
 async function openskyToken(env) {
-  if (!env.OPENSKY_CLIENT_ID || !env.OPENSKY_CLIENT_SECRET) return null;
-  if (token && Date.now() < tokenExp) return token;
-  const r = await fetch("https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token", {
-    method: "POST", headers: { ...UA, "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ grant_type: "client_credentials", client_id: env.OPENSKY_CLIENT_ID, client_secret: env.OPENSKY_CLIENT_SECRET })
-  });
-  if (!r.ok) return null;
+  const id = (env.OPENSKY_CLIENT_ID || "").trim(), secret = (env.OPENSKY_CLIENT_SECRET || "").trim();
+  if (!id || !secret) return { error: `OpenSky secrets not found on the relay (client id ${id ? "set" : "missing"}, client secret ${secret ? "set" : "missing"})` };
+  if (token && Date.now() < tokenExp) return { token };
+  let r;
+  try {
+    r = await fetch("https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token", {
+      method: "POST", headers: { ...UA, "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ grant_type: "client_credentials", client_id: id, client_secret: secret })
+    });
+  } catch (e) { return { error: `OpenSky sign-in could not be reached: ${e.message}` }; }
+  if (!r.ok) {
+    const txt = (await r.text()).slice(0, 300);
+    return { error: `OpenSky sign-in refused (HTTP ${r.status}) for client id "${id}": ${txt}` };
+  }
   const j = await r.json();
   token = j.access_token; tokenExp = Date.now() + Math.max(60, (j.expires_in || 1800) - 120) * 1000;
-  return token;
+  return { token };
 }
 
 // Same packing as the site's aircraft.json:
@@ -83,10 +91,10 @@ async function openskyWorld(env, ctx) {
   const cache = caches.default, key = new Request("https://meridian-relay.internal/opensky-world");
   const hit = await cache.match(key);
   if (hit) return hit;
-  const tok = await openskyToken(env);
-  if (!tok) return new Response(JSON.stringify({ error: "OpenSky credentials are not set on the relay" }), { status: 503, headers: { "Content-Type": "application/json" } });
-  const r = await fetch("https://opensky-network.org/api/states/all", { headers: { ...UA, Authorization: `Bearer ${tok}` } });
-  if (!r.ok) return new Response(JSON.stringify({ error: `OpenSky HTTP ${r.status}` }), { status: 502, headers: { "Content-Type": "application/json", "Cache-Control": "max-age=30" } });
+  const t = await openskyToken(env);
+  if (!t.token) return new Response(JSON.stringify({ error: t.error }), { status: 503, headers: { "Content-Type": "application/json" } });
+  const r = await fetch("https://opensky-network.org/api/states/all", { headers: { ...UA, Authorization: `Bearer ${t.token}` } });
+  if (!r.ok) return new Response(JSON.stringify({ error: `OpenSky data request refused (HTTP ${r.status}): ${(await r.text()).slice(0, 200)}` }), { status: 502, headers: { "Content-Type": "application/json", "Cache-Control": "max-age=30" } });
   const d = await r.json();
   const ac = (d.states || []).filter(s => s[5] != null && s[6] != null && !s[8]).map(s => [
     +s[6].toFixed(3), +s[5].toFixed(3), Math.round((s[7] ?? s[13] ?? 0) * 3.28084), Math.round((s[9] || 0) * 1.94384),
