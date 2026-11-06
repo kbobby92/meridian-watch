@@ -1097,7 +1097,26 @@ const hhmmZ = t => new Date(t).toISOString().slice(11, 16) + "Z";
      military aircraft worldwide, fetched through a small Cloudflare Worker that adds the browser
      permission (CORS) header the feed itself no longer sends. Live reports replace snapshot ones. */
 const LIVE_NM = 250;
-const traffic = { snap: [], world: null, area: null, mil: null };
+/* Background sweep: on each 30-second cycle the relay is also asked for SWEEP_PER_CYCLE of the world's
+   busiest air corridors and the tracked hotspots, in rotation, so those areas stay fresher than the
+   published snapshot (a full round takes roughly 10 minutes). Set SWEEP to false to switch it off. */
+const SWEEP = true, SWEEP_PER_CYCLE = 2, SWEEP_KEEP_MS = 25 * 60000;
+const SWEEP_HUBS = [
+  [40.7, -74], [41.9, -87.6], [33.9, -118.4], [32.9, -97], [33.6, -84.4], [47.4, -122.3], [25.8, -80.3], [43.7, -79.6],
+  [19.4, -99.1], [-23.4, -46.5], [4.7, -74.1], [51.5, -0.5], [49, 2.5], [50, 8.6], [52.3, 4.8], [40.5, -3.6], [41.8, 12.3],
+  [55.7, 37.6], [41, 29], [25.3, 55.4], [28.6, 77.1], [19.1, 72.9], [13.7, 100.7], [1.4, 104], [22.3, 114], [31.2, 121.5],
+  [39.9, 116.4], [35.6, 139.8], [37.5, 127], [-33.9, 151.2], [-26.1, 28.2], [30.1, 31.4], [53, -30], [60, -150]
+];
+let sweepIdx = 0;
+function sweepPoints() {
+  const pts = [];
+  for (const p of [...state.hotspots, ...state.chokepoints]) if (p.lat != null) pts.push([p.lat, p.lng]);
+  pts.push(...SWEEP_HUBS);
+  const out = [];
+  for (const [la, lo] of pts) if (!out.some(([a, b]) => Math.abs(a - la) < 3 && Math.abs(b - lo) < 3.5)) out.push([Math.round(la * 2) / 2, Math.round(lo * 2) / 2]);
+  return out;
+}
+const traffic = { snap: [], world: null, area: null, mil: null, sweep: new Map() };
 const relayOn = () => RELAY && !RELAY.startsWith("__");
 function nmBetween(la1, lo1, la2, lo2) {
   const r = Math.PI / 180, dLa = (la2 - la1) * r, dLo = (lo2 - lo1) * r;
@@ -1114,11 +1133,16 @@ function composeTraffic() {
   const ar = traffic.area, ml = traffic.mil;
   /* Base layer: the relay's worldwide OpenSky picture when it is newer than the published snapshot. */
   const wd = traffic.world, base = wd && wd.at > acAt ? wd.list : traffic.snap;
+  const cut = Date.now() - SWEEP_KEEP_MS;
+  for (const [k, s] of traffic.sweep) if (s.at < cut) traffic.sweep.delete(k);
+  const sw = [...traffic.sweep.values()].sort((a, b) => a.at - b.at);
+  const circles = [...sw.map(s => s.center), ...(ar ? ar.centers : [])];
   for (const f of base) {
     if (ml && f.mil) continue;
-    if (ar && ar.centers.some(([la, lo]) => nmBetween(la, lo, f.lat, f.lng) <= LIVE_NM)) continue;
+    if (circles.some(([la, lo]) => nmBetween(la, lo, f.lat, f.lng) <= LIVE_NM)) continue;
     map.set(f.hex, f);
   }
+  for (const s of sw) for (const f of s.list) if (!(ml && f.mil)) map.set(f.hex, f);
   if (ar) for (const f of ar.list) map.set(f.hex, f);
   if (ml) for (const f of ml.list) map.set(f.hex, f);
   state.flights = [...map.values()];
@@ -1132,6 +1156,7 @@ function trafficMsg() {
     const at = Math.max(traffic.area?.at || 0, traffic.mil?.at || 0);
     parts.push(`Live, every 30 s: ${nA.toLocaleString()} aircraft across your view and ${nM.toLocaleString()} military aircraft worldwide (updated ${ago(at)}).`);
     const wd = traffic.world;
+    if (traffic.sweep.size) parts.push(`${traffic.sweep.size} busy corridors and hotspots refreshed in rotation (each about every 10 minutes).`);
     if (wd && wd.at > acAt) parts.push(`Everywhere else: OpenSky worldwide, ${wd.list.length.toLocaleString()} aircraft (${ago(wd.at)}), refreshed about every 2 minutes.`);
     else if (acAt) parts.push(`Everywhere else: the ${hhmmZ(acAt)} snapshot (${ago(acAt)}).`);
   } else if (acAt) {
@@ -1180,6 +1205,12 @@ async function liveLoop() {
     if (!document.hidden && G && (state.layers.fl || state.layers.mil)) {
       const now = Date.now(), centers = livePoints();
       const asks = [getJSON(`${base}/mil`, 15000), ...centers.map(([la, lo]) => getJSON(`${base}/point/${la.toFixed(1)}/${lo.toFixed(1)}/${LIVE_NM}`, 15000))];
+      const sp = SWEEP ? sweepPoints() : [], sweepNow = [];
+      for (let i = 0; i < SWEEP_PER_CYCLE && sp.length; i++) {
+        const c = sp[sweepIdx++ % sp.length];
+        if (!centers.some(([la, lo]) => nmBetween(la, lo, c[0], c[1]) < LIVE_NM)) sweepNow.push(c);
+      }
+      sweepNow.forEach(([la, lo]) => asks.push(getJSON(`${base}/point/${la.toFixed(1)}/${lo.toFixed(1)}/${LIVE_NM}`, 15000)));
       /* The worldwide layer is fetched on its own so a slow or failing answer never holds up the
          30-second updates; after a failure it is not tried again for 30 minutes. */
       if (now >= worldNext) {
@@ -1193,6 +1224,8 @@ async function liveLoop() {
       }
       const res = await Promise.allSettled(asks);
       const mil = res[0], areas = res.slice(1, 1 + centers.length);
+      sweepNow.forEach((c, i) => { const r = res[1 + centers.length + i];
+        if (r.status === "fulfilled") traffic.sweep.set(c.join(","), { at: now, center: c, list: (r.value.ac || []).map(x => fromFeed(x, false, now)).filter(Boolean) }); });
       const okC = centers.filter((c, i) => areas[i].status === "fulfilled");
       if (okC.length) {
         const list = [];
