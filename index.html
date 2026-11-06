@@ -1035,8 +1035,8 @@ function renderBreaking() {
   const p = $("p-break"), items = state.breaking;
   const n1h = items.filter(x => Date.now() - Date.parse(x.t) < 3600e3).length;
   $("bk-n").textContent = n1h ? String(n1h) : "";
-  const note = `<p class="foot" style="margin:0 0 10px">Raw headlines from BBC, Al Jazeera, The Guardian, DW, France 24 and NPR that mention a tracked hotspot, refreshed about every 10 minutes${state.breakingAt ? ` (last check ${ago(state.breakingAt)})` : ""}. They are not checked or ranked; the curated briefing is under Top stories.</p>`;
-  if (!items.length) { p.innerHTML = `<div class="pane-inner">${note}${emptyBlock("No breaking headlines yet", "Headlines that mention a tracked hotspot appear here within about 10 minutes.")}</div>`; $("brkstrip-in").innerHTML = ""; return; }
+  const note = `<p class="foot" style="margin:0 0 10px">Raw headlines from BBC, Al Jazeera, The Guardian, DW, France 24 and NPR that mention a tracked hotspot, refreshed ${relayOn() ? "every few minutes" : "about every 10 minutes"}${state.breakingAt ? ` (last check ${ago(state.breakingAt)})` : ""}. They are not checked or ranked; the curated briefing is under Top stories.</p>`;
+  if (!items.length) { p.innerHTML = `<div class="pane-inner">${note}${emptyBlock("No breaking headlines yet", "Headlines that mention a tracked hotspot appear here within minutes.")}</div>`; $("brkstrip-in").innerHTML = ""; return; }
   const hots = ["All", ...new Set(items.map(x => x.hotspot))];
   if (!hots.includes(state.bkFilter)) state.bkFilter = "All";
   const list = items.filter(x => state.bkFilter === "All" || x.hotspot === state.bkFilter);
@@ -1044,17 +1044,70 @@ function renderBreaking() {
   p.querySelectorAll(".fbar button").forEach(b => b.onclick = () => { state.bkFilter = b.dataset.k; renderBreaking(); });
   bindHotChips(p);
   const show = state.bkAll ? items : items.slice(0, 5);
-  $("brkstrip-in").innerHTML = `<div class="sub"><span class="label" style="color:var(--crit)">Breaking</span><span class="muted">${n1h ? n1h + " in the last hour" : "latest headlines"}</span></div>${show.map(x => bkHtml(x, true)).join("")}${items.length > 5 ? `<button class="bk-more" id="bk-more">${state.bkAll ? "Show fewer" : `See all ${items.length} breaking headlines`}</button>` : ""}<p class="foot" style="margin:4px 0 6px">Raw headlines, refreshed about every 10 minutes; not checked or ranked.</p>`;
+  $("brkstrip-in").innerHTML = `<div class="sub"><span class="label" style="color:var(--crit)">Breaking</span><span class="muted">${n1h ? n1h + " in the last hour" : "latest headlines"}</span></div>${show.map(x => bkHtml(x, true)).join("")}${items.length > 5 ? `<button class="bk-more" id="bk-more">${state.bkAll ? "Show fewer" : `See all ${items.length} breaking headlines`}</button>` : ""}<p class="foot" style="margin:4px 0 6px">Raw headlines, refreshed ${relayOn() ? "every few minutes" : "about every 10 minutes"}; not checked or ranked.</p>`;
   const more = $("bk-more"); if (more) more.onclick = () => { state.bkAll = !state.bkAll; renderBreaking(); };
   bindHotChips($("brkstrip-in"));
+}
+/* Breaking headlines come from two places, merged: breaking.json (published with each site rebuild)
+   and, when the relay is set, the same outlets' feeds read straight through it every 3 minutes. */
+const bk = { file: [], fileAt: 0, live: [], liveAt: 0 };
+function mergeBreaking() {
+  const seen = new Set(), norm = s => s.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").slice(0, 80);
+  const now = Date.now();
+  state.breaking = [...bk.live, ...bk.file].filter(x => x.hotspot && now - Date.parse(x.t) < 864e5 && Date.parse(x.t) <= now + 3e5)
+    .sort((a, b) => b.t.localeCompare(a.t)).filter(x => { const k = norm(x.title); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 80);
+  state.breakingAt = Math.max(bk.fileAt, bk.liveAt);
+  renderBreaking(); if (G) G.ringsData(state.layers.hot ? [...state.hotspots] : []); if (state.open) renderDossier();
 }
 async function loadBreaking() {
   try {
     const d = await getJSON("breaking.json?t=" + Date.now(), 20000);
-    state.breaking = (d.items || []).filter(x => x.hotspot); state.breakingAt = Date.parse(d.at);
-    renderBreaking(); if (G) G.ringsData(state.layers.hot ? [...state.hotspots] : []); if (state.open) renderDossier();
+    bk.file = d.items || []; bk.fileAt = Date.parse(d.at) || 0; mergeBreaking();
   } catch {}
 }
+const HOT_WORDS = {
+  iran: ["iran(ian)?", "tehran", "irgc", "hormuz", "khamenei", "araghchi", "qeshm", "pezeshkian"],
+  ukraine: ["ukrain(e|ian)", "kyiv", "zelensky[iy]?", "kharkiv", "zaporizhzhia", "donetsk", "dnipro", "odesa", "kremlin"],
+  levant: ["gaza", "israel(i)?", "hezbollah", "lebanon", "lebanese", "hamas", "west bank", "netanyahu"],
+  yemen: ["houthis?", "yemen(i)?", "red sea", "aden", "bab el-mandeb", "ansarallah"],
+  sudan: ["sudan(ese)?", "rsf", "khartoum", "darfur", "el fasher", "rapid support forces"],
+  drc: ["congo(lese)?", "drc", "m23", "kinshasa", "goma", "kivu"],
+  taiwan: ["taiwan(ese)?", "taipei", "pla", "taiwan strait"],
+  scs: ["south china sea", "scarborough", "second thomas", "spratly", "philippine coast guard"],
+  blacksea: ["black sea", "bosporus", "sevastopol"],
+  baltic: ["baltic", "undersea cable", "kaliningrad"],
+  horn: ["somalia", "somaliland", "ethiopia(n)?", "eritrea", "al-shabaab"],
+  korea: ["north korea(n)?", "pyongyang", "kim jong un"],
+  venezuela: ["venezuela(n)?", "maduro", "machado", "caracas"],
+  iraq: ["iraq(i)?", "baghdad", "syria(n)?", "damascus", "erbil", "kurdistan"]
+};
+const HOT_RX = Object.entries(HOT_WORDS).map(([k, ws]) => [k, ws.map(w => new RegExp(`\\b${w}\\b`, "gi"))]);
+function tagHotspot(title) {
+  let best = null, bn = 0;
+  for (const [k, rs] of HOT_RX) { const n = rs.reduce((a, r) => a + ((title.match(r) || []).length), 0); if (n > bn) { best = k; bn = n; } }
+  return best;
+}
+const LIVE_FEEDS = [["bbc", "BBC"], ["aljazeera", "Al Jazeera"], ["guardian", "The Guardian"], ["dw", "DW"], ["france24", "France 24"], ["npr", "NPR"]];
+async function loadLiveNews() {
+  const base = RELAY.replace(/\/+$/, ""), out = [];
+  const got = await Promise.allSettled(LIVE_FEEDS.map(([k]) => fetch(`${base}/rss/${k}`, { signal: AbortSignal.timeout(20000) }).then(r => r.ok ? r.text() : Promise.reject(new Error("HTTP " + r.status)))));
+  let ok = 0;
+  got.forEach((g, i) => {
+    if (g.status !== "fulfilled") return; ok++;
+    const doc = new DOMParser().parseFromString(g.value, "text/xml");
+    for (const it of doc.querySelectorAll("item, entry")) {
+      const txt = sel => { const e = it.getElementsByTagName(sel)[0]; return e ? e.textContent.trim() : ""; };
+      const title = txt("title").replace(/\s+/g, " ");
+      const lk = it.getElementsByTagName("link")[0];
+      const url = lk ? (lk.getAttribute("href") || lk.textContent.trim()) : "";
+      const t = Date.parse(txt("pubDate") || txt("dc:date") || txt("updated") || txt("published"));
+      if (!title || !/^https?:\/\//.test(url) || isNaN(t)) continue;
+      out.push({ t: new Date(t).toISOString(), title, url, source: LIVE_FEEDS[i][1], hotspot: tagHotspot(title) });
+    }
+  });
+  if (ok) { bk.live = out; bk.liveAt = Date.now(); mergeBreaking(); }
+}
+function liveNewsLoop() { loadLiveNews(); setInterval(() => { if (!document.hidden) loadLiveNews(); }, 180000); }
 function renderTop() {
   const row = $("tn-row");
   if (!state.news.length) return;
@@ -1197,7 +1250,7 @@ async function trafficLoop() {
   };
   await load();
   setInterval(() => { if (!document.hidden) load(); }, 2 * 60000);
-  if (relayOn()) liveLoop();
+  if (relayOn()) { liveLoop(); liveNewsLoop(); }
 }
 /* Points to ask for live (30 s) aircraft: the centre of the view, plus four more around it when zoomed
    out far enough that one 250 nm circle covers only part of the screen. */

@@ -30,6 +30,7 @@ export default {
 
     const path = new URL(request.url).pathname;
     if (path === "/opensky") return withCors(await openskyWorld(env, ctx), cors);
+    if (path.startsWith("/rss/")) return withCors(await rss(path.slice(5), ctx), cors);
     let upstream = null, m;
     if (path === "/mil") {
       upstream = "https://api.adsb.lol/v2/mil";
@@ -55,6 +56,27 @@ export default {
     return out;
   }
 };
+
+// Public news feeds for the site's Breaking tab, passed through unchanged and cached for 3 minutes.
+const FEEDS = {
+  bbc: "https://feeds.bbci.co.uk/news/world/rss.xml",
+  aljazeera: "https://www.aljazeera.com/xml/rss/all.xml",
+  guardian: "https://www.theguardian.com/world/rss",
+  dw: "https://rss.dw.com/rdf/rss-en-world",
+  france24: "https://www.france24.com/en/rss",
+  npr: "https://feeds.npr.org/1004/rss.xml"
+};
+async function rss(name, ctx) {
+  const url = FEEDS[name];
+  if (!url) return new Response("Not found", { status: 404 });
+  const cache = caches.default, key = new Request(url);
+  const hit = await cache.match(key);
+  if (hit) return hit;
+  const r = await fetch(url, { headers: { "User-Agent": "meridian-watch relay (github.com/kbobby92/meridian-watch)" } });
+  const res = new Response(r.body, { status: r.status, headers: { "Content-Type": "application/xml; charset=utf-8", "Cache-Control": "public, max-age=180" } });
+  if (r.ok) ctx.waitUntil(cache.put(key, res.clone()));
+  return res;
+}
 
 function withCors(res, cors) {
   const out = new Response(res.body, res);
