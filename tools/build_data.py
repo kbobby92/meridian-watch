@@ -2,21 +2,21 @@
 
 Usage: python3 -I tools/build_data.py EXPORT_DIR data.json
 EXPORT_DIR holds one folder per collection (hotspots, news, timeline,
-chokepoints, markets, measures, meta), each with <doc_id>.json files as
+chokepoints, markets, measures, history, meta), each with <doc_id>.json files as
 saved by the ArtifactData tool's `out_dir` option.
 """
 import glob, json, os, sys
 
 src, dst = sys.argv[1], sys.argv[2]
 out = {}
-for col in ["hotspots", "news", "timeline", "chokepoints", "markets", "measures"]:
+for col in ["hotspots", "news", "timeline", "chokepoints", "markets", "measures", "history"]:
     rows = []
     for f in sorted(glob.glob(os.path.join(src, col, "*.json"))):
         j = json.load(open(f))
         d = dict(j.get("data", j))
         d["id"] = os.path.basename(f)[:-5]
         rows.append(d)
-    if not rows:
+    if not rows and col != "history":
         sys.exit(f"refusing to write: collection '{col}' is empty in {src}")
     out[col] = rows
 m = os.path.join(src, "meta", "status.json")

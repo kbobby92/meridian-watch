@@ -878,22 +878,34 @@ function showChoke(id, fromList) {
 }
 
 /* ---------- dossier ---------- */
+/* Daily index history: the "history" collection holds one document per UTC day ("YYYY-MM-DD")
+   with every hotspot's score that day. Falls back to the hotspot's own 7-day trend if there is none. */
+function scoreSeries(h) {
+  const hist = (state.history || []).filter(d => d.scores && d.scores[h.id] != null).sort((a, b) => a.id.localeCompare(b.id));
+  if (hist.length >= 2) return { vals: hist.map(d => d.scores[h.id]), dates: hist.map(d => new Date(d.id + "T12:00:00Z")) };
+  const t = h.trend || [], end = state.meta?.updatedAt ? new Date(state.meta.updatedAt) : new Date();
+  return { vals: t, dates: t.map((_, i) => { const d = new Date(end); d.setUTCDate(d.getUTCDate() - (t.length - 1 - i)); return d; }) };
+}
+function trendSpan(h) {
+  const s = scoreSeries(h); if (s.vals.length < 2) return "";
+  const days = Math.round((s.dates[s.dates.length - 1] - s.dates[0]) / 864e5) + 1;
+  return days <= 7 ? `${days} days` : `since ${s.dates[0].toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })}`;
+}
 function trendChart(h) {
-  const t = h.trend || []; if (t.length < 2) return '<p class="muted">No trend recorded.</p>';
+  const S = scoreSeries(h), t = S.vals; if (t.length < 2) return '<p class="muted">No trend recorded.</p>';
   const W = 420, H = 120, L = 26, R = 30, T = 8, B = 20;
   const lo = Math.max(0, Math.floor((Math.min(...t) - 8) / 10) * 10), hi = Math.min(100, Math.ceil((Math.max(...t) + 6) / 10) * 10);
   const x = i => L + (i / (t.length - 1)) * (W - L - R), y = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
   const color = sevOf(h.score)[2];
-  const end = state.meta?.updatedAt ? new Date(state.meta.updatedAt) : new Date();
-  const days = t.map((_, i) => { const d = new Date(end); d.setUTCDate(d.getUTCDate() - (t.length - 1 - i)); return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }); });
+  const days = S.dates.map(d => d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }));
   const ticks = []; const step = (hi - lo) > 30 ? 10 : 5; for (let v = lo; v <= hi; v += step) ticks.push(v);
   const line = t.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
   const area = `${line}L${x(t.length - 1).toFixed(1)},${H - B}L${x(0).toFixed(1)},${H - B}Z`;
-  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Seven-day index trend for ${esc(h.name)}">
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Index history for ${esc(h.name)}">
     ${ticks.map(v => `<line x1="${L}" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="#1f2a38" stroke-width="1"/><text x="${L - 6}" y="${(y(v) + 3).toFixed(1)}" text-anchor="end" font-family="IBM Plex Mono, monospace" font-size="9" fill="#6b7a8f">${v}</text>`).join("")}
     ${[80, 65, 45].filter(v => v > lo && v < hi).map(v => `<line x1="${L}" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="${sevOf(v)[2]}" stroke-width="1" stroke-dasharray="2 3" opacity=".55"/>`).join("")}
     <path d="${area}" fill="${color}" opacity=".12"/><path d="${line}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linejoin="round"/>
-    ${t.map((v, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${i === t.length - 1 ? 3.5 : 2}" fill="${i === t.length - 1 ? color : "#10161f"}" stroke="${color}" stroke-width="1.3"/>`).join("")}
+    ${t.map((v, i) => (t.length > 31 && i !== t.length - 1) ? "" : `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${i === t.length - 1 ? 3.5 : 2}" fill="${i === t.length - 1 ? color : "#10161f"}" stroke="${color}" stroke-width="1.3"/>`).join("")}
     <text x="${(x(t.length - 1) + 7).toFixed(1)}" y="${(y(t[t.length - 1]) + 3.5).toFixed(1)}" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="${color}">${t[t.length - 1]}</text>
     ${days.map((d, i) => (i === 0 || i === days.length - 1 || i === Math.floor((days.length - 1) / 2)) ? `<text x="${x(i).toFixed(1)}" y="${H - 5}" text-anchor="${i === 0 ? "start" : i === days.length - 1 ? "end" : "middle"}" font-family="IBM Plex Mono, monospace" font-size="9" fill="#6b7a8f">${d}</text>` : "").join("")}
   </svg>`;
@@ -914,7 +926,7 @@ function renderDossier() {
       <div class="big"><div class="n" style="color:${s[1]}">${h.score}<small>/100</small></div>${deltaHtml(delta(h))}</div>
     </div>
     <div class="sec"><div class="label">Assessment</div><p class="prose">${esc(h.summary)}</p></div>
-    <div class="sec trend"><div class="label">Index trend<span class="aux muted">7 days</span></div>${trendChart(h)}</div>
+    <div class="sec trend"><div class="label">Index trend<span class="aux muted">${trendSpan(h)}</span></div>${trendChart(h)}</div>
     ${facs.length ? `<div class="sec"><div class="label">Risk breakdown<span class="aux muted">${top ? "Main driver: " + esc(top.label.toLowerCase()) : ""}</span></div>
       ${facs.map(f => { const fs = sevOf(f.score); return `<div class="fac"><div class="fl">${esc(f.label)}</div><div class="fv" style="color:${fs[1]}">${f.score}</div><div><div class="track"><span style="width:${f.score}%;background:${fs[1]}"></span></div><div class="fn">${esc(f.note)}</div></div></div>`; }).join("")}
       <p class="foot" style="margin-top:8px">Each factor is scored 0–100 where higher means worse. The headline index weighs them by analyst judgment rather than a fixed formula.</p></div>` : ""}
@@ -1076,7 +1088,7 @@ async function startSiteData() {
   const load = async () => {
     try {
       const d = await getJSON("data.json?t=" + Date.now(), 20000);
-      ["hotspots", "news", "timeline", "chokepoints", "markets", "measures"].forEach(k => { state[k] = d[k] || []; });
+      ["hotspots", "news", "timeline", "chokepoints", "markets", "measures", "history"].forEach(k => { state[k] = d[k] || []; });
       state.meta = d.meta || null;
       renderAll();
       setFeed("f-brief", state.meta ? "live" : "warn", state.meta ? "Briefing · " + fmtDate(state.meta.updatedAt, true) : "Briefing · empty");
@@ -1255,7 +1267,7 @@ async function startBriefing() {
     renderAll();
     if (name === "hotspots" && !hashTried && state.hotspots.length) { hashTried = true; const id = location.hash.slice(1); if (id) openDossier(id, true); }
   }, fail);
-  ["hotspots", "news", "timeline", "chokepoints", "markets", "measures"].forEach(sub);
+  ["hotspots", "news", "timeline", "chokepoints", "markets", "measures", "history"].forEach(sub);
   db.doc("meta/status").onSnapshot(d => {
     state.meta = d.exists ? d.data() : null;
     setFeed("f-brief", state.meta ? "live" : "warn", state.meta ? "Briefing · " + fmtDate(state.meta.updatedAt, true) : "Briefing · empty");
