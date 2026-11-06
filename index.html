@@ -337,6 +337,15 @@ a.btn .sw { width: 8px; height: 8px; border-radius: 2px; }
 .big .n { font-family: var(--font-mono); font-size: 34px; font-weight: 500; line-height: 1; }
 .big .n small { font-size: 12px; color: var(--text-3); font-weight: 400; }
 .big .dl { display: block; margin-top: 5px; }
+.cgrid { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 12.5px; color: var(--text-3); }
+.cgrid span:nth-child(even) { color: var(--text); }
+.evl { display: flex; flex-direction: column; gap: 10px; }
+.evi { display: grid; grid-template-columns: 9px 1fr; gap: 0 9px; font-size: 12.5px; }
+.evi i { width: 9px; height: 9px; border-radius: 50%; margin-top: 4px; }
+.evi b { font-weight: 600; color: var(--text); }
+.evi .m { color: var(--text-3); font-size: 11.5px; margin-top: 2px; }
+.evi p { margin: 3px 0 0; color: var(--text-2); }
+.chips .mem { cursor: help; }
 .sec { padding: 14px; border-bottom: 1px solid var(--border); }
 .sec:last-child { border-bottom: 0; }
 .sec > .label { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 8px; }
@@ -431,6 +440,7 @@ a.btn .sw { width: 8px; height: 8px; border-radius: 2px; }
         <div class="toggles" role="group" aria-label="Map layers">
           <button class="tg" id="l-hot" aria-pressed="true"><span class="sw" style="background:var(--crit)"></span>Hotspots <span class="n" id="n-hot">0</span></button>
           <button class="tg" id="l-cp" aria-pressed="true"><span class="sw" style="background:var(--choke)"></span>Chokepoints <span class="n" id="n-cp">0</span></button>
+          <button class="tg" id="l-ev" aria-pressed="true" title="Located events from the twice-daily briefing, last 7 days"><span class="sw" style="background:#ff7a45"></span>Events <span class="n" id="n-ev">0</span></button>
           <button class="tg" id="l-fl" aria-pressed="true" data-site><span class="sw" style="background:var(--flight)"></span>Aircraft <span class="n" id="n-fl">0</span></button>
           <button class="tg" id="l-mil" aria-pressed="true" data-site><span class="sw" style="background:var(--mil)"></span>Military <span class="n" id="n-mil">0</span></button>
           <button class="tg" id="l-sh" aria-pressed="true" data-site><span class="sw" style="background:var(--ship)"></span>Vessels <span class="n" id="n-sh">0</span></button>
@@ -502,7 +512,7 @@ const SEV = [["Critical","var(--crit)","#e5534b",80],["High","var(--high)","#e88
 const sevOf = s => SEV.find(x => (s || 0) >= x[3]);
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const state = { hotspots: [], news: [], timeline: [], chokepoints: [], markets: [], measures: [], meta: null, flights: [], ships: [], layers: { hot: true, cp: true, fl: true, mil: true, sh: true }, newsFilter: "All", tlFilter: null, open: null, live: {} };
+const state = { hotspots: [], news: [], timeline: [], chokepoints: [], markets: [], measures: [], meta: null, flights: [], ships: [], layers: { hot: true, cp: true, ev: true, fl: true, mil: true, sh: true }, events: [], history: [], country: null, newsFilter: "All", tlFilter: null, open: null, live: {} };
 
 /* ---------- formatting ---------- */
 function fmtDate(iso, withTime) {
@@ -529,7 +539,7 @@ const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 let G = null, vlPending = false, pointClickAt = 0;
 function initGlobe() {
   if (typeof Globe !== "function") { $("globe").innerHTML = '<div class="empty" style="margin:60px 20px"><b>The globe could not load.</b>Check your connection and reopen the page.</div>'; return; }
-  const land = topojson.feature(COUNTRIES, COUNTRIES.objects.countries).features;
+  const land = topojson.feature(COUNTRIES, COUNTRIES.objects.countries).features; LAND = land;
   G = Globe({ animateIn: !reduced })($("globe"))
     .backgroundColor("rgba(0,0,0,0)")
     .showAtmosphere(true).atmosphereColor("#3d6bc4").atmosphereAltitude(0.15)
@@ -553,8 +563,15 @@ function initGlobe() {
     /* globe.gl 2.46 throws inside its render loop when the pointer rests on a particle (its default
        particle label reads .name of undefined), which stops the globe. Give particles an empty label
        and keep them out of pointer events so clicks fall through to the globe. */
+    /* Located events: small dots coloured by type, brighter in the last 24 hours. */
+    .labelsData([]).labelLat("lat").labelLng("lng").labelText(() => "").labelSize(0).labelAltitude(0.006)
+    .labelDotRadius(d => evRecent(d) ? 0.42 : 0.3).labelColor(d => evColor(d, evRecent(d) ? 1 : 0.5)).labelResolution(8)
+    .labelLabel(d => `<div class="tip"><b>${esc(d.title)}</b><br><span>${esc(d.type)} · ${esc(d.place || d.country || "")} · ${d.ts ? ago(Date.parse(d.ts)) : ""}</span></div>`)
+    .onLabelClick(d => { pointClickAt = Date.now(); showEvent(d); })
+    /* Selected country: one outline, kept out of pointer hit-testing. */
+    .polygonsData([]).polygonCapColor(() => "rgba(91,141,239,0.13)").polygonSideColor(() => "rgba(0,0,0,0)").polygonStrokeColor(() => "#5b8def").polygonAltitude(0.004)
     .particleLabel(() => "")
-    .pointerEventsFilter(obj => !(obj && obj.__globeObjType === "particles"));
+    .pointerEventsFilter(obj => !(obj && (obj.__globeObjType === "particles" || obj.__globeObjType === "polygon")));
   try { G.renderer().setPixelRatio(Math.min(window.devicePixelRatio || 1, matchMedia("(pointer: coarse)").matches ? 1.25 : 1.5)); } catch {}
   const m = G.globeMaterial(); m.shininess = 4;
   G.pointOfView({ lat: 28, lng: 40, altitude: 2.35 }, 0);
@@ -572,7 +589,16 @@ function initGlobe() {
     const moved = Math.hypot(e.clientX - downXY[0], e.clientY - downXY[1]); downXY = null;
     if (moved > 5 || e.target.closest(".cp-label")) return;
     const r = $("globe").getBoundingClientRect(), c = G.toGlobeCoords(e.clientX - r.left, e.clientY - r.top);
-    setTimeout(() => { if (Date.now() - pointClickAt < 400) return; c ? inspectAt(c.lat, c.lng) : closeInspect(); }, 60);
+    const hadCard = !$("inspect").hidden;
+    setTimeout(() => {
+      if (Date.now() - pointClickAt < 400) return;
+      if (!c) { closeInspect(); return; }
+      if (inspectAt(c.lat, c.lng)) return;
+      closeInspect(); $("inspect").hidden = true;
+      /* Clicking open land (not a plane, ship, hotspot or event) opens that country's profile,
+         unless the click was just to dismiss a card. */
+      if (!hadCard) { const f = countryAt(c.lat, c.lng); if (f) openCountry(f, c.lat, c.lng); }
+    }, 60);
   });
   new ResizeObserver(() => { const r = $("globe").getBoundingClientRect(); G.width(r.width).height(r.height); }).observe($("globe"));
 }
@@ -610,7 +636,9 @@ function drawGlobe() {
     const hs = state.layers.hot ? state.hotspots : [];
     G.pointsData(hs).ringsData(hs);
     G.htmlElementsData(state.layers.cp ? state.chokepoints : []);
+    G.labelsData(state.layers.ev ? recentEvents() : []);
   }
+  if ($("n-ev")) $("n-ev").textContent = recentEvents().length;
   drawTraffic();
   $("n-hot").textContent = state.hotspots.length; $("n-cp").textContent = state.chokepoints.length;
 }
@@ -697,6 +725,129 @@ function arrowsOnZoom() {
   if (Math.abs(a / acScale - 1) < 0.12) return;
   clearTimeout(acZoomT); acZoomT = setTimeout(() => drawArrows(acLast), 120);
 }
+/* ---------- located events ---------- */
+const EV_COLORS = { "Strike": "#ff7a45", "Battle": "#ffb547", "Attack on shipping": "#2fd4c4", "Attack": "#ff4d6d", "Protest": "#c9a7ff", "Military movement": "#7fb2ff", "Diplomacy": "#9be37a", "Other": "#c3ccd8" };
+const evColor = (d, a) => { const h = EV_COLORS[d.type] || EV_COLORS.Other; return a >= 1 ? h : h + Math.round(a * 255).toString(16).padStart(2, "0"); };
+const evRecent = d => d.ts && Date.now() - Date.parse(d.ts) < 864e5;
+const recentEvents = () => (state.events || []).filter(e => e.lat != null && e.lng != null && e.ts && Date.now() - Date.parse(e.ts) < 7 * 864e5);
+function evItemHtml(e) {
+  return `<div class="evi"><i style="background:${evColor(e, 1)}"></i><div><b>${e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.title)}</a>` : esc(e.title)}</b>
+    <div class="m">${esc(e.type)} · ${esc(e.place || e.country || "")} · ${e.ts ? ago(Date.parse(e.ts)) : ""}${e.precision === "approximate" ? " · location approximate" : ""}</div>${e.summary ? `<p>${esc(e.summary)}</p>` : ""}</div></div>`;
+}
+function showEvent(e) {
+  closeInspect(); const box = $("inspect"), h = state.hotspots.find(x => x.id === e.hotspot);
+  box.innerHTML = `<button class="x" aria-label="Close">×</button><div class="label" style="color:${evColor(e, 1)}">${esc(e.type)}</div><b>${esc(e.title)}</b>
+    <div class="kv"><span>Where</span><span class="mono">${esc(e.place || e.country || "—")}</span><span>When</span><span class="mono">${e.ts ? ago(Date.parse(e.ts)) : "—"}</span></div>
+    ${e.summary ? `<p class="foot" style="margin:6px 0 0">${esc(e.summary)}</p>` : ""}
+    ${e.precision === "approximate" ? '<p class="foot" style="margin:4px 0 0">Location approximate.</p>' : ""}
+    ${e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.source || "Source")} ↗</a>` : ""}
+    ${h ? `<div style="margin-top:8px"><button class="hchip" data-hot="${esc(h.id)}"><i style="background:${sevOf(h.score)[1]}"></i>${esc(h.name)} dossier</button></div>` : ""}`;
+  box.hidden = false; box.querySelector(".x").onclick = () => { box.hidden = true; };
+  bindHotChips(box);
+}
+
+/* ---------- country profiles: click any country on the globe ---------- */
+let LAND = [];
+function inRing(x, y, ring) { let c = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const [xi, yi] = ring[i], [xj, yj] = ring[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; }
+function countryAt(lat, lng) {
+  for (const f of LAND) {
+    const g = f.geometry; if (!g) continue;
+    const polys = g.type === "Polygon" ? [g.coordinates] : g.type === "MultiPolygon" ? g.coordinates : [];
+    for (const p of polys) if (inRing(lng, lat, p[0]) && !p.slice(1).some(h => inRing(lng, lat, h))) return f;
+  }
+  return null;
+}
+/* Memberships as of mid-2026, by ISO 3166 numeric code. */
+const BLOCS = [
+  ["NATO", "North Atlantic Treaty Organization: mutual defence alliance", "008 056 100 124 191 203 208 233 246 250 276 300 348 352 380 428 440 442 499 528 807 578 616 620 642 703 705 724 752 792 826 840"],
+  ["EU", "European Union", "040 056 100 191 196 203 208 233 246 250 276 300 348 372 380 428 440 442 470 528 616 620 642 703 705 724 752"],
+  ["G7", "Group of Seven", "124 250 276 380 392 826 840"],
+  ["G20", "Group of Twenty", "032 036 076 124 156 250 276 356 360 380 392 484 643 682 710 410 792 826 840"],
+  ["BRICS", "BRICS members", "076 643 356 156 710 818 231 364 784 360"],
+  ["SCO", "Shanghai Cooperation Organisation", "156 643 356 586 398 417 762 860 364 112"],
+  ["CSTO", "Collective Security Treaty Organization (Armenia's participation frozen)", "643 112 398 417 762 051"],
+  ["GCC", "Gulf Cooperation Council", "682 784 634 414 048 512"],
+  ["OPEC", "Organization of the Petroleum Exporting Countries", "012 178 226 266 364 368 414 434 566 682 784 862"],
+  ["ASEAN", "Association of Southeast Asian Nations", "096 116 360 418 458 104 608 702 764 704 626"],
+  ["Quad", "Quadrilateral Security Dialogue", "036 356 392 840"],
+  ["AUKUS", "Australia–UK–US security pact", "036 826 840"],
+  ["Five Eyes", "Intelligence-sharing alliance", "036 124 554 826 840"],
+  ["Nuclear-armed", "Possesses nuclear weapons (Israel undeclared)", "840 643 156 826 250 356 586 408 376"]
+].map(([n, d, c]) => ({ n, d, set: new Set(c.split(" ")) }));
+/* Which tracked hotspots involve each country. */
+const HOT_COUNTRIES = { iran: "364", ukraine: "804 643", levant: "376 422 275", yemen: "887", sudan: "729", drc: "180 646", taiwan: "158 156", scs: "608 156 704", blacksea: "804 643 792", baltic: "233 428 440 643 246 752", horn: "706 231 232", korea: "408 410", venezuela: "862", iraq: "368 760" };
+const cInfo = {}, cLeaders = {};
+async function loadCountryInfo(code) {
+  if (cInfo[code]) return;
+  cInfo[code] = "loading";
+  try {
+    const r = await fetch(`https://restcountries.com/v3.1/alpha/${code}?fields=name,capital,population,area,region,subregion,languages,currencies,flag,cca3,demonyms`, { signal: AbortSignal.timeout(12000) });
+    cInfo[code] = r.ok ? await r.json() : "none";
+  } catch { cInfo[code] = "none"; }
+  if (state.country && state.country.code === code) renderCountry();
+}
+async function loadLeaders(code) {
+  if (cLeaders[code]) return;
+  cLeaders[code] = "loading";
+  const q = `SELECT ?role ?pLabel WHERE { ?c wdt:P299 "${code}". { ?c wdt:P35 ?p. BIND("Head of state" AS ?role) } UNION { ?c wdt:P6 ?p. BIND("Head of government" AS ?role) } SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }`;
+  try {
+    const r = await fetch("https://query.wikidata.org/sparql?format=json&query=" + encodeURIComponent(q), { headers: { Accept: "application/sparql-results+json" }, signal: AbortSignal.timeout(15000) });
+    const j = await r.json(), out = {};
+    for (const b of j.results.bindings) { const k = b.role.value; (out[k] = out[k] || []).includes(b.pLabel.value) || out[k].push(b.pLabel.value); }
+    cLeaders[code] = out;
+  } catch { cLeaders[code] = "none"; }
+  if (state.country && state.country.code === code) renderCountry();
+}
+function openCountry(f, lat, lng) {
+  const code = String(f.id || "").padStart(3, "0");
+  state.open = null; state.country = { code, name: f.properties?.name || "Country", lat, lng, f };
+  $("overview").style.display = "none"; $("dossier").hidden = false;
+  if (G) G.polygonsData([f]);
+  renderCountry(); $("d-body").scrollTop = 0;
+  loadCountryInfo(code); loadLeaders(code);
+  if (isCompact()) document.documentElement.classList.add("dossier-open");
+}
+function renderCountry() {
+  const C = state.country; if (!C) return;
+  const info = typeof cInfo[C.code] === "object" ? cInfo[C.code] : null, L = typeof cLeaders[C.code] === "object" ? cLeaders[C.code] : null;
+  const name = info?.name?.common || C.name;
+  const names = [name, C.name, info?.demonyms?.eng?.m].filter(Boolean).map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const rx = new RegExp(`\\b(${[...new Set(names)].join("|")})\\b`, "i");
+  const hots = state.hotspots.filter(h => (HOT_COUNTRIES[h.id] || "").split(" ").includes(C.code));
+  const mem = BLOCS.filter(b => b.set.has(C.code));
+  const evs = (state.events || []).filter(e => (info?.cca3 && e.iso3 === info.cca3) || (e.country && rx.test(e.country))).sort((a, b) => (b.ts || "").localeCompare(a.ts || "")).slice(0, 8);
+  const brk = (state.breaking || []).filter(x => rx.test(x.title)).slice(0, 6);
+  const briefs = state.news.filter(n => rx.test(n.headline || "")).sort(byTsDesc).slice(0, 5);
+  const meas = state.measures.filter(m => rx.test(`${m.title} ${m.by}`)).sort((a, b) => (b.date || "").localeCompare(a.date || "")).slice(0, 5);
+  const fmtN = n => n >= 1e9 ? (n / 1e9).toFixed(2) + " bn" : n >= 1e6 ? (n / 1e6).toFixed(1) + " m" : n ? n.toLocaleString() : "—";
+  const loading = '<p class="muted">Loading…</p>';
+  $("d-body").innerHTML = `
+    <div class="dhead">
+      <div class="crumb label">Country profile${info?.subregion ? " · " + esc(info.subregion) : ""}</div>
+      <div><h3>${info?.flag ? info.flag + " " : ""}${esc(name)}</h3><div class="tags">${hots.length ? hots.map(h => `<span class="pill" style="color:${sevOf(h.score)[1]}">${esc(h.name)} ${h.score}</span>`).join("") : "<span>No tracked hotspot</span>"}</div></div>
+    </div>
+    <div class="sec"><div class="label">At a glance</div>
+      ${cInfo[C.code] === "loading" || !cInfo[C.code] ? loading : info ? `<div class="cgrid">
+        <span>Capital</span><span>${esc((info.capital || []).join(", ") || "—")}</span>
+        <span>Population</span><span class="mono">${fmtN(info.population)}</span>
+        <span>Area</span><span class="mono">${info.area ? Math.round(info.area).toLocaleString() + " km²" : "—"}</span>
+        <span>Languages</span><span>${esc(Object.values(info.languages || {}).slice(0, 4).join(", ") || "—")}</span>
+        <span>Currency</span><span>${esc(Object.values(info.currencies || {}).map(c => c.name).join(", ") || "—")}</span></div>` : '<p class="muted">Basic facts unavailable right now.</p>'}</div>
+    <div class="sec"><div class="label">Leadership<span class="aux muted">from Wikidata</span></div>
+      ${cLeaders[C.code] === "loading" || !cLeaders[C.code] ? loading : L && Object.keys(L).length ? `<div class="cgrid">${Object.entries(L).map(([k, v]) => `<span>${esc(k)}</span><span>${esc(v.join(", "))}</span>`).join("")}</div>` : '<p class="muted">No leadership data found.</p>'}</div>
+    <div class="sec"><div class="label">Alliances & groupings<span class="aux muted">as of mid-2026</span></div>
+      ${mem.length ? `<div class="chips">${mem.map(b => `<span class="mem" title="${esc(b.d)}">${esc(b.n)}</span>`).join("")}</div>` : '<p class="muted">Not a member of the major blocs tracked here.</p>'}</div>
+    ${hots.length ? `<div class="sec"><div class="label">Tracked hotspots</div><div class="tlinks">${hots.map(h => `<button class="hchip" data-hot="${esc(h.id)}"><i style="background:${sevOf(h.score)[1]}"></i>${esc(h.name)} · ${h.score}</button>`).join("")}</div></div>` : ""}
+    <div class="sec"><div class="label">Events on the map<span class="aux muted">${evs.length ? "most recent" : ""}</span></div>${evs.length ? `<div class="evl">${evs.map(evItemHtml).join("")}</div>` : '<p class="muted">No located events recorded here recently.</p>'}</div>
+    ${BUILD === "site" ? `<div class="sec"><div class="label">Breaking<span class="aux muted">${brk.length ? "raw headlines, not checked" : ""}</span></div>${brk.length ? brk.map(bkHtml).join("") : '<p class="muted">No headlines mentioning it in the last 24 hours.</p>'}</div>` : ""}
+    ${briefs.length ? `<div class="sec"><div class="label">Briefing reports</div>${briefs.map(n => storyHtml(n, false)).join("")}</div>` : ""}
+    ${meas.length ? `<div class="sec"><div class="label">Sanctions & trade measures</div>${meas.map(m => measureHtml(m, false)).join("")}</div>` : ""}
+    <div class="sec"><div class="label">More</div><div class="tlinks">
+      <a class="btn link" href="https://news.google.com/search?q=${encodeURIComponent(name + " when:1d")}&hl=en-US&gl=US&ceid=US:en" target="_blank" rel="noopener">News, past 24 hours ↗</a>
+      <a class="btn link" href="https://en.wikipedia.org/wiki/${encodeURIComponent(name.replace(/ /g, "_"))}" target="_blank" rel="noopener">Wikipedia ↗</a></div></div>`;
+  bindHotChips($("d-body"));
+}
+
 function inspectAt(lat, lng) {
   if (!G) return;
   const lim = Math.max(0.35, G.pointOfView().altitude * 1.1);
@@ -706,8 +857,8 @@ function inspectAt(lat, lng) {
   if (state.layers.sh) pools.push(...state.ships);
   const cl = Math.cos(lat * Math.PI / 180);
   for (const p of pools) { const dy = p.lat - lat, dx = wrapLng(p.lng - lng) * cl, d = dx * dx + dy * dy; if (d < bd) { bd = d; best = p; } }
-  if (!best || Math.sqrt(bd) > lim) { closeInspect(); return; }
-  showInspect(best);
+  if (!best || Math.sqrt(bd) > lim) return false;
+  showInspect(best); return true;
 }
 function showInspect(p) {
   const prev = state.inspect; state.inspect = p; const box = $("inspect");
@@ -727,7 +878,7 @@ function showInspect(p) {
 }
 function closeInspect() { const had = !!state.inspect; state.inspect = null; $("inspect").hidden = true; if (had) drawTraffic(); }
 function flyTo(lat, lng, alt) { if (G) { G.controls().autoRotate = false; G.pointOfView({ lat, lng, altitude: alt || 1.45 }, reduced ? 0 : 1100); } }
-["hot","cp","fl","mil","sh"].forEach(k => $("l-" + k).addEventListener("click", e => { state.layers[k] = !state.layers[k]; e.currentTarget.setAttribute("aria-pressed", state.layers[k]); drawGlobe(); }));
+["hot","cp","ev","fl","mil","sh"].forEach(k => $("l-" + k).addEventListener("click", e => { state.layers[k] = !state.layers[k]; e.currentTarget.setAttribute("aria-pressed", state.layers[k]); drawGlobe(); }));
 
 /* ---------- KPIs ---------- */
 function renderKpis() {
@@ -954,11 +1105,14 @@ function renderDossier() {
       <div class="tlinks">${(() => { const T = trackerLinks(h.lat, h.lng, 6); return `<a class="btn link" href="${T.fr24}" target="_blank" rel="noopener"><span class="sw" style="background:var(--flight)"></span>Aircraft · Flightradar24 ↗</a><a class="btn link" href="${T.adsbx}" target="_blank" rel="noopener"><span class="sw" style="background:var(--flight)"></span>Incl. military · ADS-B Exchange ↗</a><a class="btn link" href="${T.mt}" target="_blank" rel="noopener"><span class="sw" style="background:var(--ship)"></span>Ships · MarineTraffic ↗</a>`; })()}</div></div>
     <div class="sec"><div class="label">Briefing reports<span class="aux muted">${briefs.length} sourced</span></div>
       ${briefs.length ? briefs.map(n => storyHtml(n, false)).join("") : '<p class="muted">No briefing reports tagged to this hotspot yet.</p>'}</div>
+    ${(() => { const ev = state.events.filter(e => e.hotspot === h.id).sort((a, b) => (b.ts || "").localeCompare(a.ts || "")).slice(0, 6);
+      return ev.length ? `<div class="sec"><div class="label">Events on the map<span class="aux muted">last ${ev.length}</span></div><div class="evl">${ev.map(evItemHtml).join("")}</div></div>` : ""; })()}
     ${evs.length ? `<div class="sec"><div class="label">Recent timeline<span class="aux muted">${esc(h.conflict)}</span></div><div class="tl">${evs.map(evHtml).join("")}</div></div>` : ""}
   `;
 }
 function openDossier(id, fromHash) {
   const h = state.hotspots.find(x => x.id === id); if (!h) return;
+  if (state.country) { state.country = null; if (G) G.polygonsData([]); }
   state.open = id;
   $("overview").style.display = "none"; $("dossier").hidden = false;
   renderDossier(); $("d-body").scrollTop = 0;
@@ -968,7 +1122,8 @@ function openDossier(id, fromHash) {
   else if (matchMedia("(max-width: 960px)").matches) $("rail").scrollIntoView({ behavior: reduced ? "auto" : "smooth" });
 }
 function closeDossier(silent) {
-  if (!state.open) return;
+  if (!state.open && !state.country) return;
+  if (state.country) { state.country = null; if (G) G.polygonsData([]); }
   state.open = null; $("dossier").hidden = true; $("overview").style.display = "flex";
   document.documentElement.classList.remove("dossier-open");
   try { history.replaceState(null, "", location.pathname + location.search); } catch {}
@@ -1001,7 +1156,7 @@ $("layersBtn").onclick = () => { const p = document.querySelector(".main > .pane
 (() => { let v = null; try { v = localStorage.getItem(VIEW_KEY); } catch {} setView(v || (matchMedia("(max-width: 760px)").matches ? "compact" : "full"), false); })();
 function drawGlobeSelection() { if (G) G.pointsData(state.layers.hot ? [...state.hotspots] : []); }
 $("back").onclick = () => closeDossier(false);
-$("center").onclick = () => { const h = state.hotspots.find(x => x.id === state.open); if (!h) return; if (isCompact()) setCTab("globe"); flyTo(h.lat, h.lng); };
+$("center").onclick = () => { if (state.country) { if (isCompact()) setCTab("globe"); flyTo(state.country.lat, state.country.lng, 1.7); return; } const h = state.hotspots.find(x => x.id === state.open); if (!h) return; if (isCompact()) setCTab("globe"); flyTo(h.lat, h.lng); };
 addEventListener("hashchange", () => { const id = location.hash.slice(1); if (id && id !== state.open) openDossier(id, true); else if (!id) closeDossier(true); });
 addEventListener("keydown", e => { if (e.key === "Escape" && state.open) closeDossier(false); });
 
@@ -1135,7 +1290,7 @@ function renderTop() {
   bindHotChips(row);
 }
 $("tn-all").onclick = () => { closeDossier(true); if (isCompact()) { $("p-news").scrollIntoView({ behavior: reduced ? "auto" : "smooth" }); return; } document.querySelector('.tabs button[data-tab="news"]').click(); $("rail").scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" }); };
-function renderAll() { renderKpis(); renderBreaking(); renderTop(); renderRisk(); renderMarkets(); renderNews(); renderTimeline(); renderSea(); drawGlobe(); if (state.open) renderDossier(); }
+function renderAll() { renderKpis(); renderBreaking(); renderTop(); renderRisk(); renderMarkets(); renderNews(); renderTimeline(); renderSea(); drawGlobe(); if (state.open) renderDossier(); if (state.country) renderCountry(); }
 let hashTried = false;
 /* ---------- site build: briefing from data.json, live aircraft + vessels ---------- */
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -1148,7 +1303,7 @@ async function startSiteData() {
   const load = async () => {
     try {
       const d = await getJSON("data.json?t=" + Date.now(), 20000);
-      ["hotspots", "news", "timeline", "chokepoints", "markets", "measures", "history"].forEach(k => { state[k] = d[k] || []; });
+      ["hotspots", "news", "timeline", "chokepoints", "markets", "measures", "history", "events"].forEach(k => { state[k] = d[k] || []; });
       state.meta = d.meta || null;
       renderAll();
       setFeed("f-brief", state.meta ? "live" : "warn", state.meta ? "Briefing · " + fmtDate(state.meta.updatedAt, true) : "Briefing · empty");
@@ -1327,7 +1482,7 @@ async function startBriefing() {
     renderAll();
     if (name === "hotspots" && !hashTried && state.hotspots.length) { hashTried = true; const id = location.hash.slice(1); if (id) openDossier(id, true); }
   }, fail);
-  ["hotspots", "news", "timeline", "chokepoints", "markets", "measures", "history"].forEach(sub);
+  ["hotspots", "news", "timeline", "chokepoints", "markets", "measures", "history", "events"].forEach(sub);
   db.doc("meta/status").onSnapshot(d => {
     state.meta = d.exists ? d.data() : null;
     setFeed("f-brief", state.meta ? "live" : "warn", state.meta ? "Briefing · " + fmtDate(state.meta.updatedAt, true) : "Briefing · empty");

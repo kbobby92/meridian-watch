@@ -9,14 +9,14 @@ import glob, json, os, sys
 
 src, dst = sys.argv[1], sys.argv[2]
 out = {}
-for col in ["hotspots", "news", "timeline", "chokepoints", "markets", "measures", "history"]:
+for col in ["hotspots", "news", "timeline", "chokepoints", "markets", "measures", "history", "events"]:
     rows = []
     for f in sorted(glob.glob(os.path.join(src, col, "*.json"))):
         j = json.load(open(f))
         d = dict(j.get("data", j))
         d["id"] = os.path.basename(f)[:-5]
         rows.append(d)
-    if not rows and col != "history":
+    if not rows and col not in ("history", "events"):
         sys.exit(f"refusing to write: collection '{col}' is empty in {src}")
     out[col] = rows
 m = os.path.join(src, "meta", "status.json")
