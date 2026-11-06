@@ -559,6 +559,7 @@ function initGlobe() {
   const m = G.globeMaterial(); m.shininess = 4;
   G.pointOfView({ lat: 28, lng: 40, altitude: 2.35 }, 0);
   const ctr = G.controls(); ctr.autoRotate = !reduced; ctr.autoRotateSpeed = 0.22;
+  ctr.addEventListener("change", arrowsOnZoom);
   ctr.addEventListener("change", () => { if (!vlPending) { vlPending = true; setTimeout(() => { vlPending = false; viewLinks(); }, 250); } });
   $("globe").addEventListener("pointerdown", () => { ctr.autoRotate = false; }, { once: true });
   /* Clicks are resolved here rather than through the library's click events, which swallow clicks
@@ -617,12 +618,78 @@ function drawTraffic() {
   if (G) {
     const sets = [];
     const civ = state.flights.filter(f => !f.mil), mil = state.flights.filter(f => f.mil);
-    if (state.layers.fl && civ.length) sets.push({ pts: civ, color: "#e0a84a", size: 1.6 });
+    const arrows = drawArrows([...(state.layers.fl ? civ : []), ...(state.layers.mil ? mil : [])]);
+    if (!arrows && state.layers.fl && civ.length) sets.push({ pts: civ, color: "#e0a84a", size: 1.6 });
     if (state.layers.sh && state.ships.length) sets.push({ pts: state.ships, color: "#3fc1b0", size: 2.3 });
-    if (state.layers.mil && mil.length) sets.push({ pts: mil, color: "#ff5d8f", size: 3.2 });
+    if (!arrows && state.layers.mil && mil.length) sets.push({ pts: mil, color: "#ff5d8f", size: 3.2 });
     G.particlesData(sets);
   }
   $("n-fl").textContent = state.flights.filter(f => !f.mil).length.toLocaleString(); $("n-mil").textContent = state.flights.filter(f => f.mil).length.toLocaleString(); $("n-sh").textContent = state.ships.length.toLocaleString();
+}
+/* Aircraft are drawn as small arrows pointing along their reported track: one triangle mesh, two
+   triangles per aircraft, rebuilt when the traffic or the zoom level changes. The mesh is left out of
+   pointer hit-testing so dragging stays smooth. The three.js classes are borrowed from objects the
+   globe already made (it does not expose the library); if that fails, aircraft fall back to dots. */
+let acKit = null, acTries = 0, acMesh = null, acScale = 0, acLast = [];
+function threeKit() {
+  try {
+    let mesh = null, basic = null;
+    G.scene().traverse(o => {
+      if (!mesh && o.isMesh && o.geometry && o.geometry.attributes && o.geometry.attributes.position) mesh = o;
+      if (!basic && o.material && o.material.type === "MeshBasicMaterial") basic = o.material;
+    });
+    if (!mesh || !basic) return null;
+    const base = (C, flag) => { while (Object.getPrototypeOf(C).prototype && Object.getPrototypeOf(C).prototype[flag]) C = Object.getPrototypeOf(C); return C; };
+    const Geo = base(mesh.geometry.constructor, "isBufferGeometry"), Attr = base(mesh.geometry.attributes.position.constructor, "isBufferAttribute");
+    const mat = new basic.constructor({ vertexColors: true, side: 2 });
+    return { Mesh: mesh.constructor, Geo, Attr, mat };
+  } catch (e) { console.warn("arrow layer unavailable", e); return null; }
+}
+/* Vertex colours are read as linear light, so the sRGB brand colours are converted first. */
+const lin = v => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+const AC_RGB = { civ: [0xe0, 0xa8, 0x4a].map(lin), mil: [0xff, 0x5d, 0x8f].map(lin) };
+function drawArrows(list) {
+  if (!G) return false;
+  if (!acKit) acKit = threeKit();
+  if (!acKit) { if ((acTries = (acTries || 0) + 1) < 20) setTimeout(drawTraffic, 1000); return false; }
+  acLast = list;
+  const a = G.pointOfView().altitude; acScale = a;
+  /* Size in screen pixels (about 9 px tip to tail, mil 13 px), whatever the zoom or globe size. */
+  const cam = G.camera(), H = Math.max(200, G.renderer().domElement.clientHeight || 600);
+  const L0 = 5 * (2 * a * 100 * Math.tan((cam.fov || 50) * Math.PI / 360) / H);
+  const n = list.length, pos = new Float32Array(n * 18), col = new Float32Array(n * 18);
+  const sub = (p, q) => [p.x - q.x, p.y - q.y, p.z - q.z], unit = v => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+  let k = 0;
+  for (const f of list) {
+    const c0 = G.getCoords(f.lat, f.lng, f.alt), p = { x: c0.x, y: c0.y, z: c0.z };
+    const cn = G.getCoords(Math.min(89.9, f.lat + 0.05), f.lng, f.alt), N = unit(sub({ x: cn.x, y: cn.y, z: cn.z }, p));
+    const ce = G.getCoords(f.lat, f.lng + 0.05, f.alt), E = unit(sub({ x: ce.x, y: ce.y, z: ce.z }, p));
+    const h = (f.trk || 0) * Math.PI / 180, ch = Math.cos(h), sh = Math.sin(h);
+    const L = f.mil ? L0 * 1.5 : L0;
+    const d = [N[0] * ch + E[0] * sh, N[1] * ch + E[1] * sh, N[2] * ch + E[2] * sh];
+    const r = [E[0] * ch - N[0] * sh, E[1] * ch - N[1] * sh, E[2] * ch - N[2] * sh];
+    const pt = (fd, fr) => [p.x + d[0] * fd * L + r[0] * fr * L, p.y + d[1] * fd * L + r[1] * fr * L, p.z + d[2] * fd * L + r[2] * fr * L];
+    const tip = pt(1, 0), bl = pt(-0.75, -0.6), br = pt(-0.75, 0.6), notch = pt(-0.3, 0);
+    const c = f.mil ? AC_RGB.mil : AC_RGB.civ;
+    for (const v of [tip, bl, notch, tip, notch, br]) { pos.set(v, k); col.set(c, k); k += 3; }
+  }
+  if (!acMesh) {
+    acMesh = new acKit.Mesh(undefined, acKit.mat);
+    acMesh.raycast = () => {}; acMesh.__globeObjType = "particles"; acMesh.frustumCulled = false;
+    G.scene().add(acMesh);
+  }
+  /* The borrowed geometry class may be a sphere: clear its index and attributes before use. */
+  const g = new acKit.Geo(); g.setIndex(null); for (const k of Object.keys(g.attributes)) g.deleteAttribute(k); g.clearGroups && g.clearGroups();
+  g.setAttribute("position", new acKit.Attr(pos, 3)); g.setAttribute("color", new acKit.Attr(col, 3));
+  acMesh.geometry.dispose(); acMesh.geometry = g;
+  return true;
+}
+let acZoomT = null;
+function arrowsOnZoom() {
+  if (!acMesh || !acScale) return;
+  const a = G.pointOfView().altitude;
+  if (Math.abs(a / acScale - 1) < 0.12) return;
+  clearTimeout(acZoomT); acZoomT = setTimeout(() => drawArrows(acLast), 120);
 }
 function inspectAt(lat, lng) {
   if (!G) return;
