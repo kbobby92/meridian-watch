@@ -1419,15 +1419,16 @@ function liveNewsLoop() { loadLiveNews(); setInterval(() => { if (!document.hidd
 function renderTop() {
   const row = $("tn-row");
   if (!state.news.length) return;
-  let items = state.news.filter(n => n.top).sort((a, b) => a.top - b.top || byTsDesc(a, b));
-  if (!items.length) items = [...state.news].sort(byTsDesc);
-  items = items.slice(0, 4);
+  /* The briefing picks the 4 most important stories; they are shown newest first, left to right. */
+  let items = state.news.filter(n => n.top).sort((a, b) => a.top - b.top).slice(0, 4);
+  if (!items.length) items = [...state.news].sort(byTsDesc).slice(0, 4);
+  items.sort(byTsDesc);
   const newest = [...state.news].sort(byTsDesc)[0];
   $("tn-upd").textContent = newest?.ts ? "Latest " + ago(Date.parse(newest.ts)) : "";
   row.innerHTML = items.map((n, i) => {
     const h = state.hotspots.find(x => x.id === n.hotspot); const sev = h ? sevOf(h.score)[1] : "var(--border-strong)";
     return `<article class="tn" style="--sev:${sev}">
-      <div class="meta"><span class="rk">${i + 1}</span><span>${n.ts ? ago(Date.parse(n.ts)) : ""}</span><span>${esc(n.region)}</span><span>${esc(n.topic)}</span></div>
+      <div class="meta"><span>${n.ts ? ago(Date.parse(n.ts)) : ""}</span><span>${esc(n.region)}</span><span>${esc(n.topic)}</span></div>
       <h3>${n.url ? `<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.headline)}</a>` : esc(n.headline)}</h3>
       <p>${esc(n.summary)}</p>
       <div class="ft">${n.url ? `<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.source)} ↗</a>` : `<span class="muted">${esc(n.source)}</span>`}${h ? `<button class="hchip" data-hot="${esc(h.id)}"><i style="background:${sev}"></i>Dossier</button>` : ""}</div>
