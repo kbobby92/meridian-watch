@@ -1097,7 +1097,7 @@ const hhmmZ = t => new Date(t).toISOString().slice(11, 16) + "Z";
      military aircraft worldwide, fetched through a small Cloudflare Worker that adds the browser
      permission (CORS) header the feed itself no longer sends. Live reports replace snapshot ones. */
 const LIVE_NM = 250;
-const traffic = { snap: [], area: null, mil: null };
+const traffic = { snap: [], world: null, area: null, mil: null };
 const relayOn = () => RELAY && !RELAY.startsWith("__");
 function nmBetween(la1, lo1, la2, lo2) {
   const r = Math.PI / 180, dLa = (la2 - la1) * r, dLo = (lo2 - lo1) * r;
@@ -1112,9 +1112,11 @@ const fromFeed = (x, mil, t) => (x.lat == null || x.lon == null) ? null : toAc([
 function composeTraffic() {
   const map = new Map();
   const ar = traffic.area, ml = traffic.mil;
-  for (const f of traffic.snap) {
+  /* Base layer: the relay's worldwide OpenSky picture when it is newer than the published snapshot. */
+  const wd = traffic.world, base = wd && wd.at > acAt ? wd.list : traffic.snap;
+  for (const f of base) {
     if (ml && f.mil) continue;
-    if (ar && nmBetween(ar.lat, ar.lng, f.lat, f.lng) <= LIVE_NM) continue;
+    if (ar && ar.centers.some(([la, lo]) => nmBetween(la, lo, f.lat, f.lng) <= LIVE_NM)) continue;
     map.set(f.hex, f);
   }
   if (ar) for (const f of ar.list) map.set(f.hex, f);
@@ -1128,8 +1130,10 @@ function trafficMsg() {
   if (traffic.area || traffic.mil) {
     const nA = traffic.area ? traffic.area.list.filter(f => !f.mil).length : 0, nM = traffic.mil ? traffic.mil.list.length : 0;
     const at = Math.max(traffic.area?.at || 0, traffic.mil?.at || 0);
-    parts.push(`Live, every 30 s: ${nA.toLocaleString()} aircraft within ${LIVE_NM} nm of the centre of your view and ${nM.toLocaleString()} military aircraft worldwide (updated ${ago(at)}).`);
-    if (acAt) parts.push(`Everywhere else: the ${hhmmZ(acAt)} snapshot (${ago(acAt)}), refreshed about every 10 minutes.`);
+    parts.push(`Live, every 30 s: ${nA.toLocaleString()} aircraft across your view and ${nM.toLocaleString()} military aircraft worldwide (updated ${ago(at)}).`);
+    const wd = traffic.world;
+    if (wd && wd.at > acAt) parts.push(`Everywhere else: OpenSky worldwide, ${wd.list.length.toLocaleString()} aircraft (${ago(wd.at)}), refreshed about every 2 minutes.`);
+    else if (acAt) parts.push(`Everywhere else: the ${hhmmZ(acAt)} snapshot (${ago(acAt)}).`);
   } else if (acAt) {
     parts.push(`${state.flights.length.toLocaleString()} aircraft (${state.flights.filter(f => f.mil).length} military) from ${acSource}, as reported at ${hhmmZ(acAt)} (${ago(acAt)}). New snapshot about every 10 minutes.`);
   } else parts.push("Aircraft: waiting for the first snapshot.");
@@ -1158,18 +1162,44 @@ async function trafficLoop() {
   setInterval(() => { if (!document.hidden) load(); }, 2 * 60000);
   if (relayOn()) liveLoop();
 }
+/* Points to ask for live (30 s) aircraft: the centre of the view, plus four more around it when zoomed
+   out far enough that one 250 nm circle covers only part of the screen. */
+function livePoints() {
+  const v = G.pointOfView(), lat = Math.max(-85, Math.min(85, v.lat)), lng = wrapLng(v.lng);
+  const pts = [[lat, lng]];
+  if (v.altitude > 0.45) {
+    const dLa = 6.5, dLo = Math.min(60, 6.5 / Math.max(0.2, Math.cos(lat * Math.PI / 180)));
+    for (const [a, b] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) pts.push([Math.max(-85, Math.min(85, lat + a * dLa)), wrapLng(lng + b * dLo)]);
+  }
+  return pts.map(([a, b]) => [Math.round(a * 2) / 2, Math.round(b * 2) / 2]);
+}
 async function liveLoop() {
   const base = RELAY.replace(/\/+$/, "");
+  let worldNext = 0;
   for (;;) {
     if (!document.hidden && G && (state.layers.fl || state.layers.mil)) {
-      const v = G.pointOfView(), lat = Math.max(-85, Math.min(85, v.lat)), lng = wrapLng(v.lng), now = Date.now();
-      const [area, mil] = await Promise.allSettled([
-        getJSON(`${base}/point/${lat.toFixed(1)}/${lng.toFixed(1)}/${LIVE_NM}`, 15000),
-        getJSON(`${base}/mil`, 15000)
-      ]);
-      if (area.status === "fulfilled") traffic.area = { at: now, lat, lng, list: (area.value.ac || []).map(x => fromFeed(x, false, now)).filter(Boolean) };
+      const now = Date.now(), centers = livePoints();
+      const asks = [getJSON(`${base}/mil`, 15000), ...centers.map(([la, lo]) => getJSON(`${base}/point/${la.toFixed(1)}/${lo.toFixed(1)}/${LIVE_NM}`, 15000))];
+      const wantWorld = now >= worldNext;
+      if (wantWorld) asks.push(getJSON(`${base}/opensky`, 40000));
+      const res = await Promise.allSettled(asks);
+      const mil = res[0], areas = res.slice(1, 1 + centers.length);
+      if (wantWorld) {
+        const w = res[res.length - 1];
+        if (w.status === "fulfilled" && Array.isArray(w.value.ac)) {
+          const t = Date.parse(w.value.at) || now;
+          traffic.world = { at: t, list: w.value.ac.map(a => toAc(a, t, false)) };
+          worldNext = now + 120000;
+        } else worldNext = now + 300000;
+      }
+      const okC = centers.filter((c, i) => areas[i].status === "fulfilled");
+      if (okC.length) {
+        const list = [];
+        areas.forEach(a => { if (a.status === "fulfilled") list.push(...(a.value.ac || []).map(x => fromFeed(x, false, now)).filter(Boolean)); });
+        traffic.area = { at: now, centers: okC, list };
+      }
       if (mil.status === "fulfilled") traffic.mil = { at: now, list: (mil.value.ac || []).map(x => fromFeed(x, true, now)).filter(Boolean) };
-      const ok = area.status === "fulfilled" || mil.status === "fulfilled";
+      const ok = okC.length || mil.status === "fulfilled";
       setFeed("f-flights", ok ? "live" : "warn", ok ? `Aircraft · live ${hhmmZ(now)}` : "Aircraft · live feed unavailable");
       composeTraffic();
     }
