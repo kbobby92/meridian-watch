@@ -399,6 +399,11 @@ a.btn .sw { width: 8px; height: 8px; border-radius: 2px; }
 .hb.brk b { animation: hbp 1.4s ease-in-out infinite; }
 @keyframes hbp { 50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--c) 0%, transparent), 0 2px 8px rgba(0,0,0,.55); } }
 @media (prefers-reduced-motion: reduce) { .hb.brk b { animation: none; } }
+/* Zoomed in: lift the badge on a short stem so event dots underneath stay clickable. */
+.hb.lift b { top: -44px; }
+.hb.lift span { top: -40px; }
+.hb.lift::after { content: ""; position: absolute; left: -1px; top: -20px; width: 2px; height: 18px; background: var(--c); opacity: .7; pointer-events: none; }
+.hb.lift::before { content: ""; position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; border-radius: 50%; background: var(--c); pointer-events: none; }
 .cp-label { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--choke); cursor: pointer; white-space: nowrap; transform: translate(-4px, -50%); display: flex; align-items: center; gap: 4px; text-shadow: 0 0 3px #000, 0 0 6px #000; pointer-events: auto; }
 .cp-label::before { content: ""; width: 6px; height: 6px; background: var(--dc, var(--choke)); transform: rotate(45deg); }
 
@@ -466,7 +471,7 @@ a.btn .sw { width: 8px; height: 8px; border-radius: 2px; }
           <button class="tg" id="l-hot" aria-pressed="true"><span class="sw" style="background:var(--crit)"></span>Hotspots <span class="n" id="n-hot">0</span></button>
           <button class="tg" id="l-cp" aria-pressed="true"><span class="sw" style="background:var(--choke)"></span>Chokepoints <span class="n" id="n-cp">0</span></button>
           <button class="tg" id="l-ctl" aria-pressed="true" data-mode="situation" title="Areas of control: Ukraine daily from DeepState; others approximate"><span class="sw" style="background:#e5534b;opacity:.6"></span>Control <span class="n" id="n-ctl">0</span></button>
-          <button class="tg" id="l-ev" aria-pressed="true" data-mode="situation" title="Located events from the twice-daily briefing, last 7 days"><span class="sw" style="background:#ff7a45"></span>Events <span class="n" id="n-ev">0</span></button>
+          <button class="tg" id="l-ev" aria-pressed="true" data-mode="situation" title="Located events: the last 24 hours, plus situations still ongoing"><span class="sw" style="background:#ff7a45"></span>Events <span class="n" id="n-ev">0</span></button>
           <button class="tg" id="l-fl" aria-pressed="true" data-site data-mode="traffic"><span class="sw" style="background:var(--flight)"></span>Aircraft <span class="n" id="n-fl">0</span></button>
           <button class="tg" id="l-mil" aria-pressed="true" data-site data-mode="traffic"><span class="sw" style="background:var(--mil)"></span>Military <span class="n" id="n-mil">0</span></button>
           <button class="tg" id="l-sh" aria-pressed="true" data-site data-mode="traffic"><span class="sw" style="background:var(--ship)"></span>Vessels <span class="n" id="n-sh">0</span></button>
@@ -583,7 +588,7 @@ function initGlobe() {
     .onPointClick(d => { pointClickAt = Date.now(); openDossier(d.id); })
     .htmlElementsData([]).htmlLat("lat").htmlLng("lng").htmlAltitude(0.01)
     .htmlElement(d => {
-      if (d.kind === "hot") { const h = d.h, el = document.createElement("div"); el.className = "hb" + (d.sel ? " sel" : "") + (breakingCount(h.id) ? " brk" : "");
+      if (d.kind === "hot") { const h = d.h, el = document.createElement("div"); el.className = "hb" + (d.lift ? " lift" : "") + (d.sel ? " sel" : "") + (breakingCount(h.id) ? " brk" : "");
         el.style.setProperty("--c", sevOf(h.score)[2]); el.title = `${h.name} · index ${h.score} (${sevOf(h.score)[0]}) · click for dossier`;
         el.innerHTML = `<b>${h.score}</b>${d.label ? `<span>${esc(h.short || h.name)}</span>` : ""}`;
         el.onclick = e => { e.stopPropagation(); pointClickAt = Date.now(); openDossier(h.id); }; return el; }
@@ -596,10 +601,11 @@ function initGlobe() {
     /* globe.gl 2.46 throws inside its render loop when the pointer rests on a particle (its default
        particle label reads .name of undefined), which stops the globe. Give particles an empty label
        and keep them out of pointer events so clicks fall through to the globe. */
-    /* Located events: small dots coloured by type, brighter in the last 24 hours. */
-    .labelsData([]).labelLat("lat").labelLng("lng").labelText(() => "").labelSize(0).labelAltitude(0.006)
-    .labelDotRadius(d => evRecent(d) ? 0.42 : 0.3).labelColor(d => evColor(d, evRecent(d) ? 1 : 0.5)).labelResolution(8)
-    .labelLabel(d => `<div class="tip"><b>${esc(d.title)}</b><br><span>${esc(d.type)} · ${esc(d.place || d.country || "")} · ${d.ts ? ago(Date.parse(d.ts)) : ""}</span></div>`)
+    /* Located events: dots coloured by type. Size shrinks as you zoom in, and dots at the same spot
+       are fanned out around it (see evLayout) so each one can be clicked. */
+    .labelsData([]).labelLat("__lat").labelLng("__lng").labelText(() => "").labelSize(0).labelAltitude(0.006)
+    .labelDotRadius(() => evR()).labelColor(d => evColor(d, evRecent(d) ? 1 : 0.6)).labelResolution(8)
+    .labelLabel(d => `<div class="tip"><b>${esc(d.title)}</b><br><span>${esc(d.type)} · ${esc(d.place || d.country || "")} · ${d.ts ? ago(Date.parse(d.ts)) : ""}${d.ongoing ? " · ongoing" : ""}</span></div>`)
     .onLabelClick(d => { pointClickAt = Date.now(); showEvent(d); })
     /* Selected country: one outline, kept out of pointer hit-testing. */
     .polygonsData([]).polygonCapColor(d => d.__sel ? "rgba(91,141,239,0.13)" : d.color + "6b").polygonSideColor(() => "rgba(0,0,0,0)")
@@ -612,6 +618,7 @@ function initGlobe() {
   const ctr = G.controls(); ctr.autoRotate = !reduced; ctr.autoRotateSpeed = 0.22;
   ctr.addEventListener("change", arrowsOnZoom);
   ctr.addEventListener("change", citiesOnZoom);
+  ctr.addEventListener("change", eventsOnZoom);
   ctr.addEventListener("change", () => { if (!vlPending) { vlPending = true; setTimeout(() => { vlPending = false; viewLinks(); }, 250); } });
   $("globe").addEventListener("pointerdown", () => { ctr.autoRotate = false; }, { once: true });
   /* Clicks are resolved here rather than through the library's click events, which swallow clicks
@@ -699,7 +706,7 @@ function drawGlobe() {
     const hs = state.layers.hot ? state.hotspots : [];
     G.pointsData([]).ringsData(hs);
     drawHtml();
-    G.labelsData(state.layers.ev && state.mode === "situation" ? recentEvents() : []);
+    drawEvents();
     drawPolygons(); updateTexture(); drawLegend2();
   }
   if ($("n-ctl")) $("n-ctl").textContent = controlAreas().length;
@@ -795,7 +802,35 @@ function arrowsOnZoom() {
 const EV_COLORS = { "Strike": "#ff7a45", "Battle": "#ffb547", "Attack on shipping": "#2fd4c4", "Attack": "#ff4d6d", "Protest": "#c9a7ff", "Military movement": "#7fb2ff", "Diplomacy": "#9be37a", "Other": "#c3ccd8" };
 const evColor = (d, a) => { const h = EV_COLORS[d.type] || EV_COLORS.Other; return a >= 1 ? h : h + Math.round(a * 255).toString(16).padStart(2, "0"); };
 const evRecent = d => d.ts && Date.now() - Date.parse(d.ts) < 864e5;
-const recentEvents = () => (state.events || []).filter(e => e.lat != null && e.lng != null && e.ts && Date.now() - Date.parse(e.ts) < 7 * 864e5);
+/* An event stays on the map for 24 hours, or for up to 30 days while the briefing marks it ongoing. */
+const evAge = e => Date.now() - Date.parse(e.ts);
+const recentEvents = () => (state.events || []).filter(e => e.lat != null && e.lng != null && e.ts && (evAge(e) < 864e5 || (e.ongoing && evAge(e) < 30 * 864e5)));
+let evAlt = 2.35, evZoomT = 0;
+/* Dot radius in degrees, so it is scaled with the camera altitude to stay about the same size on screen. */
+const evR = () => Math.max(0.03, Math.min(0.42, 0.42 * Math.pow(evAlt / 2.35, 0.7)));
+function evLayout(list) {
+  const r = evR(), groups = [];
+  for (const e of list) {
+    const g = groups.find(g => Math.hypot(g.lat - e.lat, (g.lng - e.lng) * Math.cos(e.lat * Math.PI / 180)) < r * 2.2);
+    if (g) g.items.push(e); else groups.push({ lat: e.lat, lng: e.lng, items: [e] });
+  }
+  const out = [];
+  for (const g of groups) {
+    const n = g.items.length, ring = n === 1 ? 0 : r * 1.25 / Math.sin(Math.PI / n), k = Math.cos(g.lat * Math.PI / 180) || 1;
+    g.items.forEach((e, i) => { const a = 2 * Math.PI * i / n - Math.PI / 2;
+      out.push({ ...e, __lat: g.lat + ring * Math.sin(a), __lng: g.lng + ring * Math.cos(a) / k }); });
+  }
+  return out;
+}
+function drawEvents() {
+  if (!G) return; evAlt = G.pointOfView().altitude;
+  G.labelsData(state.layers.ev && state.mode === "situation" ? evLayout(recentEvents()) : []);
+}
+function eventsOnZoom() {
+  if (!G || !(state.layers.ev && state.mode === "situation")) return;
+  if (Math.abs(G.pointOfView().altitude / evAlt - 1) < 0.12) return;
+  clearTimeout(evZoomT); evZoomT = setTimeout(drawEvents, 120);
+}
 function evItemHtml(e) {
   return `<div class="evi"><i style="background:${evColor(e, 1)}"></i><div><b>${e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.title)}</a>` : esc(e.title)}</b>
     <div class="m">${esc(e.type)} · ${esc(e.place || e.country || "")} · ${e.ts ? ago(Date.parse(e.ts)) : ""}${e.precision === "approximate" ? " · location approximate" : ""}</div>${e.summary ? `<p>${esc(e.summary)}</p>` : ""}</div></div>`;
@@ -803,7 +838,7 @@ function evItemHtml(e) {
 function showEvent(e) {
   closeInspect(); const box = $("inspect"), h = state.hotspots.find(x => x.id === e.hotspot);
   box.innerHTML = `<button class="x" aria-label="Close">×</button><div class="label" style="color:${evColor(e, 1)}">${esc(e.type)}</div><b>${esc(e.title)}</b>
-    <div class="kv"><span>Where</span><span class="mono">${esc(e.place || e.country || "—")}</span><span>When</span><span class="mono">${e.ts ? ago(Date.parse(e.ts)) : "—"}</span></div>
+    <div class="kv"><span>Where</span><span class="mono">${esc(e.place || e.country || "—")}</span><span>When</span><span class="mono">${e.ts ? ago(Date.parse(e.ts)) : "—"}${e.ongoing ? " · ongoing" : ""}</span></div>
     ${e.summary ? `<p class="foot" style="margin:6px 0 0">${esc(e.summary)}</p>` : ""}
     ${e.precision === "approximate" ? '<p class="foot" style="margin:4px 0 0">Location approximate.</p>' : ""}
     ${e.url ? `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.source || "Source")} ↗</a>` : ""}
@@ -989,7 +1024,7 @@ function citiesOnZoom() { if (G && cityTierNow() !== cityTier) drawHtml(); }
 function drawHtml() {
   if (!G) return;
   const cities = visibleCities();
-  const hot = state.layers.hot ? state.hotspots.map(h => ({ kind: "hot", h, lat: h.lat, lng: h.lng, sel: h.id === state.open, label: cityTier >= 1 || h.id === state.open })) : [];
+  const hot = state.layers.hot ? state.hotspots.map(h => ({ kind: "hot", h, lat: h.lat, lng: h.lng, sel: h.id === state.open, label: cityTier >= 1 || h.id === state.open, lift: cityTier >= 1 })) : [];
   G.htmlElementsData([...(state.layers.cp ? state.chokepoints : []), ...cities, ...hot]);
 }
 
